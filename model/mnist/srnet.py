@@ -8,6 +8,158 @@ import numpy as np
 
 leaky_relu = lambda net: tf.nn.leaky_relu(net, alpha=0.01)
 
+        with variable_scope.variable_scope('generator') as gen_scope:
+            generated_data = srnet.generator(generator_inputs)
+
+        with variable_scope.variable_scope('discriminator') as dis_scope:
+            dis_gen_data = srnet.discriminator(generated_data, generator_inputs)
+
+        with variable_scope.variable_scope(dis_scope, reuse = True):
+            real_data = ops.convert_to_tensor(real_data)
+            dis_real_data = srnet.discriminator(real_data, generator_inputs)
+
+        with variable_scope.variable_scope('encoder') as encoder:
+            semantic_rep = srnet.encoder()
+        with variable_scope.variable_scope('decoder') as decoder:
+            code = srnet.decoder(semantic_rep)
+
+class srnet():
+    def __init__(self):
+
+        self.graph = tf.Graph()
+        self.sess = tf.Session()
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+
+        self.generator = generator
+        self.discriminator = discriminator
+        self.encoder = encoder
+        self.decoder = decoder
+
+        with graph.as_default():
+            # TODO generator input fix!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
+            with variable_scope.variable_scope('generator') as gen_scope:
+                gen_data = self.generator(gen_input_noise, gen_input_code) #real/fake loss
+            
+            with variable_scope.variable_scope('discriminator') as dis_scope:
+                dis_gen_data, Q_net = self.discriminator(gen_data) #real/fake loss + I(c' ; X_{data}) loss
+            with variable_scope.variable_scope(dis_scope, reuse = True):
+                real_data = ops.convert_to_tensor(real_data)
+                dis_real_data, _ = self.discriminator(real_data) #real/fake loss 
+            with variable_scope.variable_scope(dis_scope, reuse = True):
+                visual_feature_tensors = ops.convert_to_tensor(visual_feature_images)
+                not_use visual_feature_code = self.discriminator(visual_feature_tensors, gen_inputs) 
+            
+            with variable_scope.variable_scope('encoder') as en_scope:
+                visual_feature_semantic_rep = self.encoder(visual_feature_code) # Variance-bias Loss
+            with variable_scope.variable_scope('decoder') as de_scope:
+                reconstructed_code = self.decoder(visual_feature_semantic_rep) #L2(c', c'') reconstruction loss
+
+            with variable_scope.variable_scope(en_scope, reuse = True):
+                gen_data_semantic_rep = self.encoder(Q_net)
+            with variable_scope.variable_scope(de_scope, reuse = True):
+                gen_data_decoded_code = self.decoder(gen_data_semantic_rep)
+
+            #loss
+            self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=dis_scope)
+            self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=gen_scope)
+            self.encoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=en_scope)
+            self.decoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=de_scope)
+
+            self.D_loss = loss.wasserstein_discriminator(dis_gen_data, dis_real_data)
+            self.G_loss = loss.wasserstein_generator(dis_gen_data)
+            self.wasserstein_gradient_penalty_loss = loss.wasserstein_gradient_penalty
+
+            self.mutual_information_loss = loss.mutual_information_penalty_weight(gen_inputs, Q_net)
+
+            self.reconstruction_loss1 = loss.reconstruction_loss(visual_feature_semantic_rep, reconstructed_code)
+            self.reconstruction_loss2 = loss.reconstruction_loss(gen_data_semantic_rep, gen_data_decoded_code)
+            self.variance_bias_loss = loss.variance_bias_loss(visual_feature_semantic_rep)
+            self.cross_entropy_loss = loss.cross_entropy_loss(gen_input_code, gen_data_decoded_code)
+
+            #solver
+            self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss + self.wasserstein_gradient_penalty_loss, var_list=self.dis_var)
+            self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
+            self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
+
+            self.autoencoder_solver = tf.train.AdamOptimizer().minimize(self.reconstruction_loss1 + self.reconstruction_loss2, var_list=self.encoder_var+self.decoder_var)
+            self.semantic_encoder_solver = tf.train.AdamOptimizer().minimize(self.variance_bias_loss, var_list=self.encoder_var + self.dis_var)
+            self.total_network_solver = tf.train.AdamOptimizer().minimize(self.cross_entropy_loss, var_list = self.gen_var + self.dis_var + self.encoder_var + self.decoder_var)
+
+    def train(self, sample_dir, ckpt_dir='ckpt', training_iteration = 1000000, batch_size = 64):
+
+        # Make this train from the latest checkpoint!
+        i = 0
+        self.sess.run(tf.global_variables_initializer())
+
+        for i in range(training_iteration):
+            
+
+
+
+
+
+
+
+
+
+class InfoGAN():
+    def __init__(self, generator, discriminator, data):
+        self.generator = generator
+        self.discriminator = discriminator
+        self.data = data
+
+        # data
+        self.z_dim = self.data.z_dim
+        self.c_dim = self.data.y_dim # condition
+        self.size = self.data.size
+        self.channel = self.data.channel
+
+        self.X = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
+        self.z = tf.placeholder(tf.float32, shape=[None, self.z_dim])
+        self.c = tf.placeholder(tf.float32, shape=[None, self.c_dim])
+
+        # nets
+        # G
+        self.G_sample = self.generator(concat(self.z, self.c))
+        # D and Q
+        self.D_real, _ = self.discriminator(self.X)
+        self.D_fake, self.Q_fake = self.discriminator(self.G_sample, reuse = True)
+        
+        # loss
+        self.D_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_real, labels=tf.ones_like(self.D_real))) + tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_fake, labels=tf.zeros_like(self.D_fake)))
+        self.G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_fake, labels=tf.ones_like(self.D_fake)))
+        self.Q_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.Q_fake, labels=self.c))
+
+        # solver
+        self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.discriminator.vars)
+        self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.generator.vars)
+        self.Q_solver = tf.train.AdamOptimizer().minimize(self.Q_loss, var_list=self.generator.vars + self.discriminator.vars)
+        
+        self.saver = tf.train.Saver()
+        gpu_options = tf.GPUOptions(allow_growth=True)
+        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+
+
+def load_batch(dataset_path, dataset_name, split_name, batch_size=128, image_size=[64, 64, 3]):
+    #1. Data pipeline
+    dataset = mnist_reader.get_split(split_name, dataset_path)
+    print(dataset_name)
+    print(split_name)
+    data_provider = slim.dataset_data_provider.DatasetDataProvider(
+                    dataset, common_queue_capacity=4*batch_size, common_queue_min=batch_size)    
+    [image, label] = data_provider.get(['image', 'label'])
+
+    image = (tf.to_float(image) - 128.0) / 128.0 # convert 0~255 scale into -1~1 scale
+    image.set_shape(image_size)
+    images, labels = tf.train.batch(
+              [image, label],
+              batch_size=batch_size,
+              num_threads=4,
+              capacity=2 * batch_size)
+    return dataset, images, labels
+
+
 def generator(inputs, categorical_dim, weight_decay=2.5e-5):
     """InfoGAN discriminator network on MNIST digits.
     
