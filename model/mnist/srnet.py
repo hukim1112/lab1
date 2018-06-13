@@ -60,22 +60,23 @@ class srnet():
             with variable_scope.variable_scope(de_scope, reuse = True):
                 gen_data_decoded_code = self.decoder(gen_data_semantic_rep)
 
+            #TO do code loss functions.
             #loss
             self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=dis_scope)
             self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=gen_scope)
             self.encoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=en_scope)
             self.decoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=de_scope)
 
-            self.D_loss = loss.wasserstein_discriminator(dis_gen_data, dis_real_data)
-            self.G_loss = loss.wasserstein_generator(dis_gen_data)
-            self.wasserstein_gradient_penalty_loss = loss.wasserstein_gradient_penalty
+            self.D_loss = losses.wasserstein_discriminator(dis_gen_data, dis_real_data)
+            self.G_loss = losses.wasserstein_generator(dis_gen_data)
+            self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
 
-            self.mutual_information_loss = loss.mutual_information_penalty_weight(gen_inputs, Q_net)
+            self.mutual_information_loss = losses.mutual_information_penalty_weight(gen_inputs, Q_net)
 
-            self.reconstruction_loss1 = loss.reconstruction_loss(visual_feature_semantic_rep, reconstructed_code)
-            self.reconstruction_loss2 = loss.reconstruction_loss(gen_data_semantic_rep, gen_data_decoded_code)
-            self.variance_bias_loss = loss.variance_bias_loss(visual_feature_semantic_rep)
-            self.cross_entropy_loss = loss.cross_entropy_loss(gen_input_code, gen_data_decoded_code)
+            self.reconstruction_loss1 = losses.reconstruction_loss(visual_feature_semantic_rep, reconstructed_code)
+            self.reconstruction_loss2 = losses.reconstruction_loss(gen_data_semantic_rep, gen_data_decoded_code)
+            self.variance_bias_loss = losses.variance_bias_loss(visual_feature_semantic_rep)
+            self.cross_entropy_loss = losses.cross_entropy_loss(gen_input_code, gen_data_decoded_code)
 
             #solver
             self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss + self.wasserstein_gradient_penalty_loss, var_list=self.dis_var)
@@ -93,7 +94,7 @@ class srnet():
         self.sess.run(tf.global_variables_initializer())
 
         for i in range(training_iteration):
-            
+
 
 
 
