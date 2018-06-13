@@ -8,21 +8,6 @@ import numpy as np
 
 leaky_relu = lambda net: tf.nn.leaky_relu(net, alpha=0.01)
 
-        with variable_scope.variable_scope('generator') as gen_scope:
-            generated_data = srnet.generator(generator_inputs)
-
-        with variable_scope.variable_scope('discriminator') as dis_scope:
-            dis_gen_data = srnet.discriminator(generated_data, generator_inputs)
-
-        with variable_scope.variable_scope(dis_scope, reuse = True):
-            real_data = ops.convert_to_tensor(real_data)
-            dis_real_data = srnet.discriminator(real_data, generator_inputs)
-
-        with variable_scope.variable_scope('encoder') as encoder:
-            semantic_rep = srnet.encoder()
-        with variable_scope.variable_scope('decoder') as decoder:
-            code = srnet.decoder(semantic_rep)
-
 class srnet():
     def __init__(self):
 
@@ -98,48 +83,6 @@ class srnet():
 
 
 
-
-
-
-
-
-
-class InfoGAN():
-    def __init__(self, generator, discriminator, data):
-        self.generator = generator
-        self.discriminator = discriminator
-        self.data = data
-
-        # data
-        self.z_dim = self.data.z_dim
-        self.c_dim = self.data.y_dim # condition
-        self.size = self.data.size
-        self.channel = self.data.channel
-
-        self.X = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
-        self.z = tf.placeholder(tf.float32, shape=[None, self.z_dim])
-        self.c = tf.placeholder(tf.float32, shape=[None, self.c_dim])
-
-        # nets
-        # G
-        self.G_sample = self.generator(concat(self.z, self.c))
-        # D and Q
-        self.D_real, _ = self.discriminator(self.X)
-        self.D_fake, self.Q_fake = self.discriminator(self.G_sample, reuse = True)
-        
-        # loss
-        self.D_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_real, labels=tf.ones_like(self.D_real))) + tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_fake, labels=tf.zeros_like(self.D_fake)))
-        self.G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=self.D_fake, labels=tf.ones_like(self.D_fake)))
-        self.Q_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.Q_fake, labels=self.c))
-
-        # solver
-        self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.discriminator.vars)
-        self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.generator.vars)
-        self.Q_solver = tf.train.AdamOptimizer().minimize(self.Q_loss, var_list=self.generator.vars + self.discriminator.vars)
-        
-        self.saver = tf.train.Saver()
-        gpu_options = tf.GPUOptions(allow_growth=True)
-        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128, image_size=[64, 64, 3]):
