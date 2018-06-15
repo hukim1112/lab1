@@ -8,40 +8,6 @@ import numpy as np
 
 leaky_relu = lambda net: tf.nn.leaky_relu(net, alpha=0.01)
 
-def get_infogan_noise(batch_size, categorical_dim, structured_continuous_dim,
-                      total_continuous_noise_dims):
-  """Get unstructured and structured noise for InfoGAN.
-
-  Args:
-    batch_size: The number of noise vectors to generate.
-    categorical_dim: The number of categories in the categorical noise.
-    structured_continuous_dim: The number of dimensions of the uniform
-      continuous noise.
-    total_continuous_noise_dims: The number of continuous noise dimensions. This
-      number includes the structured and unstructured noise.
-
-  Returns:
-    A 2-tuple of structured and unstructured noise. First element is the
-    unstructured noise, and the second is a 2-tuple of
-    (categorical structured noise, continuous structured noise).
-  """
-  # Get unstructurd noise.
-  unstructured_noise = tf.random_normal(
-      [batch_size, total_continuous_noise_dims - structured_continuous_dim])
-
-  # Get categorical noise Tensor.
-  categorical_dist = ds.Categorical(logits=tf.zeros([categorical_dim]))
-  categorical_noise = categorical_dist.sample([batch_size])
-  categorical_noise = tf.one_hot(categorical_noise, categorical_dim)
-
-  # Get continuous noise Tensor.
-  continuous_dist = ds.Uniform(-tf.ones([structured_continuous_dim]),
-                               tf.ones([structured_continuous_dim]))
-  continuous_noise = continuous_dist.sample([batch_size])
-
-  return [unstructured_noise], [categorical_noise, continuous_noise]
-
-
 class Srnet():
     def __init__(self):
 
@@ -55,21 +21,8 @@ class Srnet():
         self.encoder = encoder
         self.decoder = decoder
 
-        self.data = data
-
-        # data
-        self.z_dim = self.data.z_dim
-        self.c_dim = self.data.y_dim # condition
-        self.size = self.data.size
-        self.channel = self.data.channel
-        self.batch_size = self.data.batch_size
-
         with graph.as_default():
-
-            self.real_data = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
-            self.gen_input_noise = tf.placeholder(tf.float32, shape=[None, self.z_dim])
-            self.gen_input_code = tf.placeholder(tf.float32, shape=[None, self.c_dim])
-
+            # TODO generator input fix!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
             with variable_scope.variable_scope('generator') as gen_scope:
                 gen_data = self.generator(gen_input_noise, gen_input_code) #real/fake loss
             
@@ -119,62 +72,14 @@ class Srnet():
             self.semantic_encoder_solver = tf.train.AdamOptimizer().minimize(self.variance_bias_loss, var_list=self.encoder_var + self.dis_var)
             self.total_network_solver = tf.train.AdamOptimizer().minimize(self.cross_entropy_loss, var_list = self.gen_var + self.dis_var + self.encoder_var + self.decoder_var)
 
-    def train(self, sample_dir, ckpt_dir='ckpt', training_iteration = 1000000, batch_size = 64):
+    # def train(self, sample_dir, ckpt_dir='ckpt', training_iteration = 1000000, batch_size = 64):
 
-        # Make this train from the latest checkpoint!
-        i = 0
-        self.sess.run(tf.global_variables_initializer())
+    #     # Make this train from the latest checkpoint!
+    #     i = 0
+    #     self.sess.run(tf.global_variables_initializer())
 
-        for i in range(training_iteration):
+    #     for i in range(training_iteration):
 
-
-    def train(self, sample_dir, ckpt_dir='ckpt', training_epoches = 1000000, batch_size = 64):
-        fig_count = 0
-        self.sess.run(tf.global_variables_initializer())
-        
-        for epoch in range(training_epoches):
-            X_b, _= self.data(batch_size)
-            z_b = sample_z(batch_size, self.z_dim)
-            c_b = sample_c(batch_size, self.c_dim)
-            # update D
-            self.sess.run(
-                self.D_solver,
-                feed_dict={self.X: X_b, self.z: z_b, self.c: c_b}
-                )
-            # update G
-            for _ in range(1):
-                self.sess.run(
-                    self.G_solver,
-                    feed_dict={self.z: z_b, self.c: c_b}
-                )
-            # update Q
-            for _ in range(2):  
-                self.sess.run(
-                    self.Q_solver,
-                    feed_dict={self.z: z_b, self.c: c_b}
-                )
-            # save img, model. print loss
-            if epoch % 100 == 0 or epoch < 100:
-                D_loss_curr = self.sess.run(
-                        self.D_loss,
-                        feed_dict={self.X: X_b, self.z: z_b, self.c: c_b})
-                G_loss_curr, Q_loss_curr = self.sess.run(
-                        [self.G_loss, self.Q_loss],
-                        feed_dict={self.z: z_b, self.c: c_b})
-                print('Iter: {}; D loss: {:.4}; G_loss: {:.4}; Q_loss: {:.4}'.format(epoch, D_loss_curr, G_loss_curr, Q_loss_curr))
-
-                if epoch % 1000 == 0:
-                    z_s = sample_z(16, self.z_dim)
-                    c_s = sample_c(16, self.c_dim, fig_count%10)
-                    samples = self.sess.run(self.G_sample, feed_dict={self.c: c_s, self.z: z_s})
-
-                    fig = self.data.data2fig(samples)
-                    plt.savefig('{}/{}_{}.png'.format(sample_dir, str(fig_count).zfill(3), str(fig_count%10)), bbox_inches='tight')
-                    fig_count += 1
-                    plt.close(fig)
-
-                #if epoch % 2000 == 0:
-                #   self.saver.save(self.sess, os.path.join(ckpt_dir, "infogan.ckpt"))
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128, image_size=[64, 64, 3]):
 
@@ -196,16 +101,25 @@ def load_batch(dataset_path, dataset_name, split_name, batch_size=128, image_siz
     return dataset, images, labels
 
 
-def generator(gen_input_noise, gen_input_code, weight_decay=2.5e-5):
+def generator(inputs, categorical_dim, weight_decay=2.5e-5):
     """InfoGAN discriminator network on MNIST digits.
     
     Based on a paper https://arxiv.org/abs/1606.03657 and their code
     https://github.com/openai/InfoGAN.
     
+    Args:
+        inputs: A 3-tuple of Tensors (unstructured_noise, categorical structured
+            noise, continuous structured noise). `inputs[0]` and `inputs[2]` must be
+            2D, and `inputs[1]` must be 1D. All must have the same first dimension.
+        categorical_dim: Dimensions of the incompressible categorical noise.
+        weight_decay: The value of the l2 weight decay.
+    
     Returns:
         A generated image in the range [-1, 1].
     """
-    all_noise = tf.concat([gen_input_noise, gen_input_code], axis=1)
+    unstructured_noise, cat_noise, cont_noise = inputs
+    cat_noise_onehot = tf.one_hot(cat_noise, categorical_dim)
+    all_noise = tf.concat([unstructured_noise, cat_noise_onehot, cont_noise], axis=1)
     
     with slim.arg_scope(
         [layers.fully_connected, layers.conv2d_transpose],

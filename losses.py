@@ -162,3 +162,68 @@ def wasserstein_gradient_penalty(
   penalty = losses.compute_weighted_loss(penalties, weights, scope=scope)
 
   return penalty
+
+def mutual_information_penalty(
+    structured_generator_inputs,
+    predicted_distributions,
+    weights=1.0,
+    scope=None,
+    add_summaries=False):
+  """Returns a penalty on the mutual information in an InfoGAN model.
+
+  This loss comes from an InfoGAN paper https://arxiv.org/abs/1606.03657.
+
+  Args:
+    structured_generator_inputs: A list of Tensors representing the random noise
+      that must  have high mutual information with the generator output. List
+      length should match `predicted_distributions`.
+    predicted_distributions: A list of tf.Distributions. Predicted by the
+      recognizer, and used to evaluate the likelihood of the structured noise.
+      List length should match `structured_generator_inputs`.
+    weights: Optional `Tensor` whose rank is either 0, or the same dimensions as
+      `structured_generator_inputs`.
+    scope: The scope for the operations performed in computing the loss.
+    loss_collection: collection to which this loss will be added.
+    reduction: A `tf.losses.Reduction` to apply to loss.
+    add_summaries: Whether or not to add summaries for the loss.
+
+  Returns:
+    A scalar Tensor representing the mutual information loss.
+  """
+  _validate_information_penalty_inputs(
+      structured_generator_inputs, predicted_distributions)
+  q_cat = predicted_distributions[0]
+  q_cont = predicted_distributions[1]
+
+  q_cat = ds.Categorical(logits_cat)
+  sigma_cont = tf.ones_like(q_con)
+  q_cont = ds.Normal(loc=q_con, scale=sigma_cont)
+  predicted_distributions = tf.concat([q_cat, q_cont], 1)
+  # Calculate the negative log-likelihood of the reconstructed noise.
+  log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
+               zip(predicted_distributions, structured_generator_inputs)]
+  loss = -1 * losses.compute_weighted_loss(log_probs, weights, scope)
+
+  return loss
+
+
+
+def _validate_distributions(distributions):
+  if not isinstance(distributions, (list, tuple)):
+    raise ValueError('`distributions` must be a list or tuple. Instead, '
+                     'found %s.', type(distributions))
+  for x in distributions:
+    if not isinstance(x, ds.Distribution):
+      raise ValueError('`distributions` must be a list of `Distributions`. '
+                       'Instead, found %s.', type(x))
+
+
+def _validate_information_penalty_inputs(
+    structured_generator_inputs, predicted_distributions):
+  """Validate input to `mutual_information_penalty`."""
+  _validate_distributions(predicted_distributions)
+  if len(structured_generator_inputs) != len(predicted_distributions):
+    raise ValueError('`structured_generator_inputs` length %i must be the same '
+                     'as `predicted_distributions` length %i.' % (
+                         len(structured_generator_inputs),
+                         len(predicted_distributions)))
