@@ -105,19 +105,19 @@ class Srnet():
 
             self.mutual_information_loss = losses.mutual_information_penalty_weight(gen_inputs, Q_net)
 
-            self.reconstruction_loss1 = losses.reconstruction_loss(visual_feature_semantic_rep, reconstructed_code)
-            self.reconstruction_loss2 = losses.reconstruction_loss(gen_data_semantic_rep, gen_data_decoded_code)
+            self.reconstruction_loss1 = losses.mean_square_loss(visual_feature_semantic_rep, reconstructed_code)
+            self.reconstruction_loss2 = losses.mean_square_loss(gen_data_semantic_rep, gen_data_decoded_code)
             self.variance_bias_loss = losses.variance_bias_loss(visual_feature_semantic_rep)
-            self.cross_entropy_loss = losses.cross_entropy_loss(gen_input_code, gen_data_decoded_code)
+            self.total_network_loss = losses.mean_square_loss(gen_input_code, gen_data_decoded_code)
 
             #solver
-            self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss + self.wasserstein_gradient_penalty_loss, var_list=self.dis_var)
+            self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
             self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
             self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
 
             self.autoencoder_solver = tf.train.AdamOptimizer().minimize(self.reconstruction_loss1 + self.reconstruction_loss2, var_list=self.encoder_var+self.decoder_var)
             self.semantic_encoder_solver = tf.train.AdamOptimizer().minimize(self.variance_bias_loss, var_list=self.encoder_var + self.dis_var)
-            self.total_network_solver = tf.train.AdamOptimizer().minimize(self.cross_entropy_loss, var_list = self.gen_var + self.dis_var + self.encoder_var + self.decoder_var)
+            self.total_network_solver = tf.train.AdamOptimizer().minimize(self.total_network_loss, var_list = self.gen_var + self.dis_var + self.encoder_var + self.decoder_var)
 
     def train(self, sample_dir, ckpt_dir='ckpt', training_iteration = 1000000, batch_size = 64):
 

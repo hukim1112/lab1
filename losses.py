@@ -206,6 +206,15 @@ def mutual_information_penalty(
 
   return loss
 
+def mean_square_loss(
+    _input,
+    _output,
+    weights=1.0,
+    scope=None,
+    add_summaries=False):
+
+  return 0.5 * tf.reduce_sum(tf.pow(tf.subtract(_input, _output), 2.0))
+
 
 
 def _validate_distributions(distributions):
