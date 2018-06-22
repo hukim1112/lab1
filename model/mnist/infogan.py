@@ -39,7 +39,7 @@ def get_infogan_noise(batch_size, categorical_dim, code_continuous_dim,
                                tf.ones([code_continuous_dim]))
   continuous_code = continuous_dist.sample([batch_size])
 
-  return [noise], [categorical_code, continuous_code]
+  return noise, [categorical_code, continuous_code]
 
 class Data()
     def __init__(self, cat_dim, code_con_dim, total_con_dim, channel, path, name, split_name, batch_size):
