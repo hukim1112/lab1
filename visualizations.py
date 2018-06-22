@@ -5,6 +5,7 @@ import numpy as np
 import time
 import cv2
 import os
+from tensorflow.python.ops import variable_scope
 tfgan = tf.contrib.gan
 leaky_relu = lambda net: tf.nn.leaky_relu(net, alpha=0.01)
 
@@ -52,8 +53,8 @@ def varying_categorical_noise(self, categorical_dim,
     continuous_code = np.concatenate(continuous_code)
 
     display_images = []
-    with variable_scope.variable_scope(dis_scope, reuse = True):
-        display_images = self.generator(continuous_noise, [categorical_code, continuous_code])
+    with variable_scope.variable_scope(self.gen_scope, reuse = True):
+        display_images = self.generator(np.float32(continuous_noise), [np.float32(categorical_code), np.float32(continuous_code)])
 
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)
     results = np.squeeze(self.sess.run(display_img))
@@ -112,19 +113,14 @@ def varying_noise_continuous_ndim(self, order, categorical_dim,
     varying_factor = np.tile(continuous_sample_points, rows)
     continuous_code[:, order] = varying_factor 
 
-
-    print(continuous_noise.shape)
-    print(categorical_code.shape)
-    print(continuous_code.shape)
-
     display_images = []
-    with variable_scope.variable_scope(dis_scope, reuse = True):
-        display_images = self.generator(continuous_noise, [categorical_code, continuous_code])
+    with variable_scope.variable_scope(self.gen_scope, reuse = True):
+        display_images = self.generator(np.float32(continuous_noise), [np.float32(categorical_code), np.float32(continuous_code)])
 
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)
     results = np.squeeze(self.sess.run(display_img))
     results = results*128 + 128
-    cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(continuous_order)+'.png'), results.astype(np.uint8))
+    cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(order)+'.png'), results.astype(np.uint8))
     print(str(iteration)+'th result saved')
 
 
@@ -157,13 +153,14 @@ def varying_noise_continuous_ndim_without_category(self, order, total_continuous
 
     varying_factor = np.tile(continuous_sample_points, rows)
     continuous_noise[:, order] = varying_factor 
-
+    continuous_noise = np.float32(continuous_noise)
+    
     display_images = []
-    with variable_scope.variable_scope(dis_scope, reuse = True):
+    with variable_scope.variable_scope(self.gen_scope.name, reuse = True):
         display_images = self.generator(continuous_noise)
 
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)
     results = np.squeeze(self.sess.run(display_img))
     results = results*128 + 128
-    cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(continuous_order)+'.png'), results.astype(np.uint8))
+    cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(order)+'.png'), results.astype(np.uint8))
     print(str(iteration)+'th result saved')

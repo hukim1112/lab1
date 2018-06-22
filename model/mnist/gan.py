@@ -62,25 +62,19 @@ class Gan():
 
         with self.graph.as_default():
             with slim.queues.QueueRunners(self.sess):
-                self.initializer = tf.global_variables_initializer()
                 self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
                 tf.train.start_queue_runners(self.sess)               
                 self.gen_input_noise = get_noise(self.batch_size, self.total_con_dim)
-
-                #if this model done well, erase it
-                # self.real_data = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
-                # self.gen_input_noise = tf.placeholder(tf.float32, shape=[None, self.z_dim])
-                # self.gen_input_code = tf.placeholder(tf.float32, shape=[None, 2])
 
                 with variable_scope.variable_scope('generator') as self.gen_scope:
                     self.gen_data = self.generator(self.gen_input_noise) #real/fake loss
                 
                 with variable_scope.variable_scope('discriminator') as self.dis_scope:
                     self.dis_gen_data = self.discriminator(self.gen_data) #real/fake loss + I(c' ; X_{data}) loss
-                with variable_scope.variable_scope(self.dis_scope, reuse = True):
+                with variable_scope.variable_scope(self.dis_scope.name, reuse = True):
                     self.real_data = ops.convert_to_tensor(self.real_data)
                     self.dis_real_data = self.discriminator(self.real_data) #real/fake loss 
-                print(self.dis_scope.name)
+                
                 #TO do code loss functions.
                 #loss
                 self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope.name)
@@ -95,28 +89,28 @@ class Gan():
                 self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
      
                 self.saver = tf.train.Saver()
+                self.initializer = tf.global_variables_initializer()
+    def train(self, result_dir, ckpt_dir, training_iteration = 1000000, D_update_ratio=1):
+        with self.graph.as_default():
+	        path_to_latest_ckpt = tf.train.latest_checkpoint(ckpt_dir)
+	        if path_to_latest_ckpt == None:
+	        	print('scratch from random distribution')
+	        	self.sess.run(self.initializer)
+	        else:
+	            self.saver.restore(self.sess, path_to_latest_ckpt)
+	            print('restore')
+	        noise_ = get_noise(1, self.total_con_dim)
 
-    def train(self, result_dir, ckpt_dir, training_iteration = 1000000):
-        # Make this train from the latest checkpoint!
-        path_to_latest_ckpt = tf.train.latest_checkpoint(ckpt_dir)
-        if path_to_latest_ckpt == None:
-            self.sess.run(self.initializer)
-        else:
-            self.saver.restore(self.sess, path_to_latest_ckpt)
+	        for i in range(training_iteration):
+	            for _ in range(D_update_ratio):
+	                self.sess.run(self.D_solver)
+	            for _ in range(1):
+	                self.sess.run(self.G_solver)
 
-        for i in range(training_iteration):
-            #if this model done well, erase it
-            # dataset, real_images, labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
-            # gen_input_noise, gen_input_code = get_infogan_noise(self.batch_size, self.cat_dim, self.structured_con_dim, self.total_con_dim)
-
-            for _ in range(1):
-                self.sess.run(self.D_solver)
-            for _ in range(1):
-                self.sess.run(self.G_solver)
-
-            if ((i % 1000) == 0):
-            	visualizations.varying_noise_continuous_ndim_without_category(self, order, total_continuous_dim, i, result_dir)
-
+	            if ((i % 1000) == 1):
+	            	order = int(i/1000)%self.total_con_dim
+	            	visualizations.varying_noise_continuous_ndim_without_category(self, order, self.total_con_dim, i, result_dir)
+	            	self.saver.save(self.sess, ckpt_dir, i)
 
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128):
