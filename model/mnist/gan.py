@@ -61,42 +61,42 @@ class Gan():
         self.batch_size = self.data.batch_size
 
         with self.graph.as_default():
-            
-            self.initializer = tf.global_variables_initializer()
-            self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
-            self.gen_input_noise = get_noise(self.batch_size, self.total_con_dim)
+            with slim.queues.QueueRunners(self.sess):
+                self.initializer = tf.global_variables_initializer()
+                self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
+                tf.train.start_queue_runners(self.sess)               
+                self.gen_input_noise = get_noise(self.batch_size, self.total_con_dim)
 
-            #if this model done well, erase it
-            # self.real_data = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
-            # self.gen_input_noise = tf.placeholder(tf.float32, shape=[None, self.z_dim])
-            # self.gen_input_code = tf.placeholder(tf.float32, shape=[None, 2])
+                #if this model done well, erase it
+                # self.real_data = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
+                # self.gen_input_noise = tf.placeholder(tf.float32, shape=[None, self.z_dim])
+                # self.gen_input_code = tf.placeholder(tf.float32, shape=[None, 2])
 
-            with variable_scope.variable_scope('generator') as self.gen_scope:
-                self.gen_data = self.generator(self.gen_input_noise) #real/fake loss
-            
-            with variable_scope.variable_scope('discriminator') as self.dis_scope:
-                self.dis_gen_data = self.discriminator(self.gen_data) #real/fake loss + I(c' ; X_{data}) loss
-            with variable_scope.variable_scope(self.dis_scope, reuse = True):
-                self.real_data = ops.convert_to_tensor(self.real_data)
-                self.dis_real_data = self.discriminator(self.real_data) #real/fake loss 
-            print(self.dis_scope.name)
-            #TO do code loss functions.
-            #loss
-            self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope.name)
-            self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.gen_scope.name)
+                with variable_scope.variable_scope('generator') as self.gen_scope:
+                    self.gen_data = self.generator(self.gen_input_noise) #real/fake loss
+                
+                with variable_scope.variable_scope('discriminator') as self.dis_scope:
+                    self.dis_gen_data = self.discriminator(self.gen_data) #real/fake loss + I(c' ; X_{data}) loss
+                with variable_scope.variable_scope(self.dis_scope, reuse = True):
+                    self.real_data = ops.convert_to_tensor(self.real_data)
+                    self.dis_real_data = self.discriminator(self.real_data) #real/fake loss 
+                print(self.dis_scope.name)
+                #TO do code loss functions.
+                #loss
+                self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope.name)
+                self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.gen_scope.name)
 
-            self.D_loss = losses_fn.wasserstein_discriminator_loss(self.dis_real_data, self.dis_gen_data)
-            self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
-            #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
+                self.D_loss = losses_fn.wasserstein_discriminator_loss(self.dis_real_data, self.dis_gen_data)
+                self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
+                #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
 
-            #solver
-            self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
-            self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
- 
-            self.saver = tf.train.Saver()
+                #solver
+                self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
+                self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
+     
+                self.saver = tf.train.Saver()
 
     def train(self, result_dir, ckpt_dir, training_iteration = 1000000):
-
         # Make this train from the latest checkpoint!
         path_to_latest_ckpt = tf.train.latest_checkpoint(ckpt_dir)
         if path_to_latest_ckpt == None:
