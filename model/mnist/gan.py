@@ -7,6 +7,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.framework import ops
 import numpy as np
 import visualizations, losses_fn
+import os
+import cv2
 from datasets.reader import mnist as mnist_reader
 
 
@@ -33,8 +35,6 @@ def get_noise(batch_size, total_continuous_noise_dims):
       [batch_size, total_continuous_noise_dims])
 
   return noise
-
-
 
 
 class Gan():
@@ -82,43 +82,63 @@ class Gan():
 
                 self.D_loss = losses_fn.wasserstein_discriminator_loss(self.dis_real_data, self.dis_gen_data)
                 self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
-                #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
+                self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty(self, self.real_data, self.gen_data)
+                tf.summary.scalar('D_loss', self.D_loss + self.wasserstein_gradient_penalty_loss)
+                tf.summary.scalar('G_loss', self.G_loss)
+                self.merged = tf.summary.merge_all()
 
+                self.global_step = tf.Variable(0, name='global_step', trainable=False)
                 #solver
-                self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
-                self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
-     
+                self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss+self.wasserstein_gradient_penalty_loss, var_list=self.dis_var, global_step=self.global_step)
+                self.G_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
+    
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
-    def train(self, result_dir, ckpt_dir, training_iteration = 1000000, D_update_ratio=1):
+    def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_ratio=1):
         with self.graph.as_default():
-	        path_to_latest_ckpt = tf.train.latest_checkpoint(ckpt_dir)
-	        if path_to_latest_ckpt == None:
-	        	print('scratch from random distribution')
-	        	self.sess.run(self.initializer)
-	        else:
-	            self.saver.restore(self.sess, path_to_latest_ckpt)
-	            print('restore')
-	        noise_ = get_noise(1, self.total_con_dim)
+            path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
+            if path_to_latest_ckpt == None:
+            	print('scratch from random distribution')
+            	self.sess.run(self.initializer)
+            else:
+                self.saver.restore(self.sess, path_to_latest_ckpt)
+                print('restored')
+            self.train_writer = tf.summary.FileWriter(log_dir, self.sess.graph)
+            for i in range(training_iteration):
+                for _ in range(1):
+                    self.sess.run(self.D_solver)
+                for _ in range(G_update_ratio):
+                    self.sess.run(self.G_solver)
+                merge, global_step = self.sess.run([self.merged, self.global_step])
+                self.train_writer.add_summary(merge, global_step)
+                if ((i % 100) == 0):
+                	order = int(i/1000)%self.total_con_dim
+                	visualizations.varying_noise_continuous_ndim_without_category(self, order, self.total_con_dim, global_step, result_dir)
+                if ((i % 500) == 0 ):
+                	self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
 
-	        for i in range(training_iteration):
-	            for _ in range(D_update_ratio):
-	                self.sess.run(self.D_solver)
-	            for _ in range(1):
-	                self.sess.run(self.G_solver)
+    def evaluate_with_random_sample(self, result_dir, ckpt_dir):
+        with self.graph.as_default():
+            path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
+            if path_to_latest_ckpt == None:
+                print('There is no trained weight files...')
+                return
+            else:
+                self.saver.restore(self.sess, path_to_latest_ckpt)
+                print('restored')
+                images = self.sess.run(self.gen_data)
+                print('shape check of result : ', images.shape)
 
-	            if ((i % 1000) == 1):
-	            	order = int(i/1000)%self.total_con_dim
-	            	visualizations.varying_noise_continuous_ndim_without_category(self, order, self.total_con_dim, i, result_dir)
-	            	self.saver.save(self.sess, ckpt_dir, i)
+                for i in range(len(images)):
+                    cv2.imwrite(os.path.join(result_dir, str(i)+'.jpg'), images[i])
+
+
 
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128):
 
     #1. Data pipeline
     dataset = mnist_reader.get_split(split_name, dataset_path)
-    print(dataset_name)
-    print(split_name)
     data_provider = slim.dataset_data_provider.DatasetDataProvider(
                     dataset, common_queue_capacity=4*batch_size, common_queue_min=batch_size)    
     [image, label] = data_provider.get(['image', 'label'])
@@ -128,7 +148,6 @@ def load_batch(dataset_path, dataset_name, split_name, batch_size=128):
               batch_size=batch_size,
               num_threads=4,
               capacity=2 * batch_size)
-    print('batch image size :', images.shape)
     return dataset, images, labels
 
 
@@ -142,22 +161,35 @@ def generator(gen_input_noise, weight_decay=2.5e-5):
         A generated image in the range [-1, 1].
     """
 
-    print('noise shape : ', gen_input_noise.shape)
     with slim.arg_scope(
         [layers.fully_connected, layers.conv2d_transpose],
-        activation_fn=tf.nn.relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
         weights_regularizer=layers.l2_regularizer(weight_decay)):
         net = layers.fully_connected(gen_input_noise, 1024)
         net = layers.fully_connected(net, 7 * 7 * 128)
         net = tf.reshape(net, [-1, 7, 7, 128])
-        net = layers.conv2d_transpose(net, 64, [3, 3], stride=2)
-        net = layers.conv2d_transpose(net, 32, [3, 3], stride=2)
+        net = layers.conv2d_transpose(net, 64, [4, 4], stride=2)
+        net = layers.conv2d_transpose(net, 32, [4, 4], stride=2)
         # Make sure that generator output is in the same range as `inputs`
         # ie [-1, 1].
         net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)
     
         return net
 
+    # with slim.arg_scope(
+    #     [layers.fully_connected, layers.conv2d_transpose],
+    #     activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
+    #     weights_regularizer=layers.l2_regularizer(weight_decay)):
+    #     net = layers.fully_connected(gen_input_noise, 1024)
+    #     net = layers.fully_connected(net, 7 * 7 * 256)
+    #     net = tf.reshape(net, [-1, 7, 7, 256])
+    #     net = layers.conv2d_transpose(net, 64, [3, 3], stride=2)
+    #     net = layers.conv2d_transpose(net, 32, [3, 3], stride=2)
+    #     # Make sure that generator output is in the same range as `inputs`
+    #     # ie [-1, 1].
+    #     net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)
+        
+    #     return net
 
 def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2):
     """InfoGAN discriminator network on MNIST digits.
@@ -181,14 +213,24 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
     """
     with slim.arg_scope(
         [layers.conv2d, layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=None,
         weights_regularizer=layers.l2_regularizer(weight_decay),
         biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.conv2d(img, 64, [3, 3], stride=2)
-        net = layers.conv2d(net, 128, [3, 3], stride=2)
+        net = layers.conv2d(img, 64, [4, 4], stride=2)
+        net = layers.conv2d(net, 128, [4, 4], stride=2)
         net = layers.flatten(net)
-        net = layers.fully_connected(net, 1024, normalizer_fn=layers.layer_norm)
+        net = layers.fully_connected(net, 1024, normalizer_fn=layers.batch_norm)
     
         logits_real = layers.fully_connected(net, 1, activation_fn=None)
-
         return logits_real
+
+    # with slim.arg_scope(
+    #     [layers.conv2d, layers.fully_connected],
+    #     activation_fn=leaky_relu, normalizer_fn=None,
+    #     weights_regularizer=layers.l2_regularizer(weight_decay),
+    #     biases_regularizer=layers.l2_regularizer(weight_decay)):
+    #     net = layers.conv2d(img, 64, [3, 3], stride=2)
+    #     net = layers.conv2d(net, 128, [3, 3], stride=2)
+    #     net = layers.flatten(net)
+    #     net = layers.fully_connected(net, 1024, normalizer_fn=layers.batch_norm)
+    #     return layers.linear(net, 1)

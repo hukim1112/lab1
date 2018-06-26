@@ -41,18 +41,6 @@ def get_infogan_noise(batch_size, categorical_dim, code_continuous_dim,
 
   return noise, [categorical_code, continuous_code]
 
-class Data()
-    def __init__(self, cat_dim, code_con_dim, total_con_dim, channel, path, name, split_name, batch_size):
-        self.cat_dim = cat_dim
-        self.code_con_dim = code_con_dim
-        self.total_con_dim = total_con_dim
-        self.channel = channel
-        self.path = path
-        self.name = name
-        self.split_name = split_name
-        self.batch_size = batch_size
-
-
 class Info_gan():
     def __init__(self, data):
 
@@ -63,9 +51,6 @@ class Info_gan():
 
         self.generator = generator
         self.discriminator = discriminator
-        self.encoder = encoder
-        self.decoder = decoder
-
         self.data = data
 
         # data
@@ -80,116 +65,64 @@ class Info_gan():
         self.batch_size = self.data.batch_size
 
         with self.graph.as_default():
+            with slim.queues.QueueRunners(self.sess):
+                self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
+                tf.train.start_queue_runners(self.sess)
+                self.gen_input_noise, self.gen_input_code = get_infogan_noise(self.batch_size, self.cat_dim, self.code_con_dim, self.total_con_dim)
 
-            self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
-            self.gen_input_noise, self.gen_input_code = get_infogan_noise(self.batch_size, self.cat_dim, self.code_con_dim, self.total_con_dim)
+                with variable_scope.variable_scope('generator') as self.gen_scope:
+                    self.gen_data = self.generator(self.gen_input_noise, self.gen_input_code) #real/fake loss
+                
+                with variable_scope.variable_scope('discriminator') as self.dis_scope:
+                    self.dis_gen_data, self.Q_net = self.discriminator(self.gen_data) #real/fake loss + I(c' ; X_{data}) loss
+                with variable_scope.variable_scope(dis_scope, reuse = True):
+                    self.real_data = ops.convert_to_tensor(self.real_data)
+                    self.dis_real_data, _ = self.discriminator(self.real_data) #real/fake loss 
 
-            #if this model done well, erase it
-            # self.real_data = tf.placeholder(tf.float32, shape=[None, self.size, self.size, self.channel])
-            # self.gen_input_noise = tf.placeholder(tf.float32, shape=[None, self.z_dim])
-            # self.gen_input_code = tf.placeholder(tf.float32, shape=[None, 2])
+                #TO do code loss functions.
+                #loss
+                self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope)
+                self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.gen_scope)
 
-            with variable_scope.variable_scope('generator') as self.gen_scope:
-                self.gen_data = self.generator(self.gen_input_noise, self.gen_input_code) #real/fake loss
-            
-            with variable_scope.variable_scope('discriminator') as self.dis_scope:
-                self.dis_gen_data, self.Q_net = self.discriminator(self.gen_data) #real/fake loss + I(c' ; X_{data}) loss
-            with variable_scope.variable_scope(dis_scope, reuse = True):
-                self.real_data = ops.convert_to_tensor(self.real_data)
-                self.dis_real_data, _ = self.discriminator(self.real_data) #real/fake loss 
+                self.D_loss = losses_fn.wasserstein_discriminator(self.dis_gen_data, self.dis_real_data)
+                self.G_loss = losses_fn.wasserstein_generator(self.dis_gen_data)
+                #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
+                self.mutual_information_loss = losses_fn.mutual_information_penalty_weight(self.gen_input_code, self.Q_net)
 
-            #TO do code loss functions.
-            #loss
-            self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope)
-            self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.gen_scope)
+                self.global_step = tf.Variable(0, name='global_step', trainable=False)
+                #solver
+                self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss, var_list=self.dis_var)
+                self.G_solver = tf.train.AdamOptimizer(0.00009, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
+                self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
 
-            self.D_loss = losses.wasserstein_discriminator(self.dis_gen_data, self.dis_real_data)
-            self.G_loss = losses.wasserstein_generator(self.dis_gen_data)
-            #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
-
-            self.mutual_information_loss = losses.mutual_information_penalty_weight(self.gen_input_code, self.Q_net)
-
-            #solver
-            self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
-            self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
-            self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
-
-            self.saver = tf.train.Saver()
-
+                self.saver = tf.train.Saver()
+                self.initializer = tf.global_variables_initializer()
     def train(self, result_dir, data_dir, ckpt_dir, training_iteration = 1000000):
+        with self.graph.as_default():
+            path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
+            if path_to_latest_ckpt == None:
+                print('scratch from random distribution')
+                self.sess.run(self.initializer)
+            else:
+                self.saver.restore(self.sess, path_to_latest_ckpt)
+                print('restore')
 
-        # Make this train from the latest checkpoint!
-        path_to_latest_ckpt = tf.train.latest_checkpoint(ckpt_dir)
-        if path_to_latest_ckpt == None:
-            self.sess.run(tf.global_variables_initializer())
-        else:
-            self.saver.restore(sess, path_to_latest_ckpt)
+            for i in range(training_iteration):
+                for _ in range(1):
+                    self.sess.run(self.D_solver)
+                for _ in range(1):
+                    self.sess.run(self.G_solver)
+                for _ in range(2):
+                    self.sess.run(self.mutual_information_solver)
 
-        for i in range(training_iteration):
-            #if this model done well, erase it
-            # dataset, real_images, labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
-            # gen_input_noise, gen_input_code = get_infogan_noise(self.batch_size, self.cat_dim, self.structured_con_dim, self.total_con_dim)
+                if ((i % 1000) == 0):
+                    visualizations.varying_noise_continuous_ndim(self, 0, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
+                    visualizations.varying_noise_continuous_ndim(self, 1, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
+                    visualizations.varying_noise_continuous_ndim(self, 3, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
+                    visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
+                if ((i % 5000) == 0 ):
+                    self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
 
-            for _ in range(1):
-                self.sess.run(self.D_solver)
-            for _ in range(1):
-                self.sess.run(self.G_solver)
-            for _ in range(2):
-                self.sess.run(self.mutual_information_solver)
-
-            if ((i % 1000) == 0):
-
-
-
-
-
-    def train(self, sample_dir, ckpt_dir='ckpt', training_epoches = 1000000, batch_size = 64):
-        fig_count = 0
-        self.sess.run(tf.global_variables_initializer())
-        
-        for epoch in range(training_epoches):
-            X_b, _= self.data(batch_size)
-            z_b = sample_z(batch_size, self.z_dim)
-            c_b = sample_c(batch_size, self.c_dim)
-            # update D
-            self.sess.run(
-                self.D_solver,
-                feed_dict={self.X: X_b, self.z: z_b, self.c: c_b}
-                )
-            # update G
-            for _ in range(1):
-                self.sess.run(
-                    self.G_solver,
-                    feed_dict={self.z: z_b, self.c: c_b}
-                )
-            # update Q
-            for _ in range(2):  
-                self.sess.run(
-                    self.Q_solver,
-                    feed_dict={self.z: z_b, self.c: c_b}
-                )
-            # save img, model. print loss
-            if epoch % 100 == 0 or epoch < 100:
-                D_loss_curr = self.sess.run(
-                        self.D_loss,
-                        feed_dict={self.X: X_b, self.z: z_b, self.c: c_b})
-                G_loss_curr, Q_loss_curr = self.sess.run(
-                        [self.G_loss, self.Q_loss],
-                        feed_dict={self.z: z_b, self.c: c_b})
-                print('Iter: {}; D loss: {:.4}; G_loss: {:.4}; Q_loss: {:.4}'.format(epoch, D_loss_curr, G_loss_curr, Q_loss_curr))
-
-                if epoch % 1000 == 0:
-                    z_s = sample_z(16, self.z_dim)
-                    c_s = sample_c(16, self.c_dim, fig_count%10)
-                    samples = self.sess.run(self.G_sample, feed_dict={self.c: c_s, self.z: z_s})
-
-                    fig = self.data.data2fig(samples)
-                    plt.savefig('{}/{}_{}.png'.format(sample_dir, str(fig_count).zfill(3), str(fig_count%10)), bbox_inches='tight')
-                    fig_count += 1
-                    plt.close(fig)
-
-                #if epoch % 2000 == 0:
-                #   self.saver.save(self.sess, os.path.join(ckpt_dir, "infogan.ckpt"))
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128):
 

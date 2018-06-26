@@ -159,8 +159,12 @@ def varying_noise_continuous_ndim_without_category(self, order, total_continuous
     with variable_scope.variable_scope(self.gen_scope.name, reuse = True):
         display_images = self.generator(continuous_noise)
 
+    print('display_images shape : ', display_images.shape)
+
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)
     results = np.squeeze(self.sess.run(display_img))
+    
+    print('results shape : ', results.shape)
     results = results*128 + 128
     cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(order)+'.png'), results.astype(np.uint8))
     print(str(iteration)+'th result saved')

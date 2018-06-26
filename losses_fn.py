@@ -85,11 +85,9 @@ def wasserstein_discriminator_loss(
   return loss
 
 def wasserstein_gradient_penalty(
+    self,
     real_data,
     generated_data,
-    generator_inputs,
-    discriminator_fn,
-    discriminator_scope,
     epsilon=1e-10,
     weights=1.0,
     scope=None,
@@ -139,14 +137,9 @@ def wasserstein_gradient_penalty(
   interpolates = real_data + (alpha * differences)
 
   # Reuse variables if a discriminator scope already exists.
-  reuse = False if discriminator_scope is None else True
-  with variable_scope.variable_scope(discriminator_scope, 'gpenalty_dscope',
-                                     reuse=reuse):
-    disc_interpolates = discriminator_fn(interpolates, generator_inputs)
-
-  if isinstance(disc_interpolates, tuple):
-    # ACGAN case: disc outputs more than one tensor
-    disc_interpolates = disc_interpolates[0]
+  reuse = False if self.dis_scope.name is None else True
+  with variable_scope.variable_scope(self.dis_scope.name, 'gpenalty_dscope', reuse=reuse):
+    disc_interpolates = self.discriminator(interpolates)
 
   gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
   gradient_squares = math_ops.reduce_sum(
