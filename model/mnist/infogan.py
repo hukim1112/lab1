@@ -15,7 +15,7 @@ def get_infogan_noise(batch_size, categorical_dim, code_continuous_dim,
   Args:
     batch_size: The number of noise vectors to generate.
     categorical_dim: The number of categories in the categorical noise.
-    structured_continuous_dim: The number of dimensions of the uniform
+    code_continuous_dim: The number of dimensions of the uniform
       continuous noise.
     total_continuous_noise_dims: The number of continuous noise dimensions. This
       number includes the structured and unstructured noise.
@@ -57,7 +57,6 @@ class Info_gan():
         self.cat_dim = self.data.cat_dim
         self.code_con_dim = self.data.code_con_dim
         self.total_con_dim = self.data.total_con_dim
-        self.size = self.data.size
         self.channel = self.data.channel
         self.dataset_path = self.data.path
         self.dataset_name = self.data.name
@@ -86,18 +85,22 @@ class Info_gan():
 
                 self.D_loss = losses_fn.wasserstein_discriminator(self.dis_gen_data, self.dis_real_data)
                 self.G_loss = losses_fn.wasserstein_generator(self.dis_gen_data)
-                #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
+                self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty(self, self.real_data, self.gen_data)
                 self.mutual_information_loss = losses_fn.mutual_information_penalty_weight(self.gen_input_code, self.Q_net)
+                tf.summary.scalar('D_loss', self.D_loss + self.wasserstein_gradient_penalty_loss)
+                tf.summary.scalar('G_loss', self.G_loss)
+                tf.summary.scalar('Mutual_information_loss', self.wasserstein_gradient_penalty_loss)
+                self.merged = tf.summary.merge_all()
 
                 self.global_step = tf.Variable(0, name='global_step', trainable=False)
                 #solver
                 self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss, var_list=self.dis_var)
-                self.G_solver = tf.train.AdamOptimizer(0.00009, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
-                self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
+                self.G_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
+                self.mutual_information_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
 
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
-    def train(self, result_dir, data_dir, ckpt_dir, training_iteration = 1000000):
+    def train(self, result_dir, data_dir, ckpt_dir, training_iteration = 1000000, G_update_ratio=1, D_update_ratio=1, Q_update_ratio=1):
         with self.graph.as_default():
             path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
             if path_to_latest_ckpt == None:
@@ -106,23 +109,37 @@ class Info_gan():
             else:
                 self.saver.restore(self.sess, path_to_latest_ckpt)
                 print('restore')
-
+            self.train_writer = tf.summary.FileWriter(log_dir, self.sess.graph)
             for i in range(training_iteration):
-                for _ in range(1):
+                for _ in range(D_update_ratio):
                     self.sess.run(self.D_solver)
-                for _ in range(1):
+                for _ in range(G_update_ratio):
                     self.sess.run(self.G_solver)
-                for _ in range(2):
+                for _ in range(Q_update_ratio):
                     self.sess.run(self.mutual_information_solver)
-
+                merge, global_step = self.sess.run([self.merged, self.global_step])
+                self.train_writer.add_summary(merge, global_step)
                 if ((i % 1000) == 0):
                     visualizations.varying_noise_continuous_ndim(self, 0, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
                     visualizations.varying_noise_continuous_ndim(self, 1, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
-                    visualizations.varying_noise_continuous_ndim(self, 3, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
+                    visualizations.varying_noise_continuous_ndim(self, 2, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
                     visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
                 if ((i % 5000) == 0 ):
                     self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
+    def evaluate_with_random_sample(self, result_dir, ckpt_dir):
+        with self.graph.as_default():
+            path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
+            if path_to_latest_ckpt == None:
+                print('There is no trained weight files...')
+                return
+            else:
+                self.saver.restore(self.sess, path_to_latest_ckpt)
+                print('restored')
+                images = self.sess.run(self.gen_data)
+                print('shape check of result : ', images.shape)
 
+                for i in range(len(images)):
+                    cv2.imwrite(os.path.join(result_dir, str(i)+'.jpg'), images[i])
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128):
 
@@ -157,17 +174,16 @@ def generator(gen_input_noise, gen_input_code, weight_decay=2.5e-5):
     print('noise shape : ', all_noise.shape)
     with slim.arg_scope(
         [layers.fully_connected, layers.conv2d_transpose],
-        activation_fn=tf.nn.relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
         weights_regularizer=layers.l2_regularizer(weight_decay)):
         net = layers.fully_connected(all_noise, 1024)
         net = layers.fully_connected(net, 7 * 7 * 128)
         net = tf.reshape(net, [-1, 7, 7, 128])
-        net = layers.conv2d_transpose(net, 64, [3, 3], stride=2)
-        net = layers.conv2d_transpose(net, 32, [3, 3], stride=2)
+        net = layers.conv2d_transpose(net, 64, [4, 4], stride=2)
+        net = layers.conv2d_transpose(net, 32, [4, 4], stride=2)
         # Make sure that generator output is in the same range as `inputs`
         # ie [-1, 1].
-        net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)
-    
+        net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)   
         return net
 
 
@@ -191,15 +207,16 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
         Logits for the probability that the image is real, and a list of posterior
         distributions for each of the noise vectors.
     """
+
     with slim.arg_scope(
         [layers.conv2d, layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=None,
         weights_regularizer=layers.l2_regularizer(weight_decay),
         biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.conv2d(img, 64, [3, 3], stride=2)
-        net = layers.conv2d(net, 128, [3, 3], stride=2)
+        net = layers.conv2d(img, 64, [4, 4], stride=2)
+        net = layers.conv2d(net, 128, [4, 4], stride=2)
         net = layers.flatten(net)
-        net = layers.fully_connected(net, 1024, normalizer_fn=layers.layer_norm)
+        net = layers.fully_connected(net, 1024, normalizer_fn=layers.batch_norm)
     
         logits_real = layers.fully_connected(net, 1, activation_fn=None)
 
@@ -218,25 +235,3 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
         #q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
 
         return logits_real, [q_cat, q_cont]
-
-def encoder(input, weight_decay=2.5e-3, semantic_dim=2):
-    with slim.arg_scope(
-        [layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=None,
-        weights_regularizer=layers.l2_regularizer(weight_decay),
-        biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.fully_connected(input, 32, normalizer_fn=layers.batch_norm)
-        net = layers.fully_connected(net, 16, normalizer_fn=layers.batch_norm)
-        semantic_rep = layers.fully_connected(net, semantic_dim, normalizer_fn=None)
-        return semantic_rep
-
-def decoder(input, weight_decay=2.5e-3, continuous_dim = 10):
-    with slim.arg_scope(
-        [layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=None,
-        weights_regularizer=layers.l2_regularizer(weight_decay),
-        biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.fully_connected(input, 32, normalizer_fn=layers.batch_norm)
-        net = layers.fully_connected(net, 16, normalizer_fn=layers.batch_norm)
-        disentangled_rep = layers.fully_connected(net, continuous_dim, activation_fn=tf.nn.sigmoid, normalizer_fn=None)
-        return disentangled_rep

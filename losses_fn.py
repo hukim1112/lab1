@@ -188,9 +188,9 @@ def mutual_information_penalty(
   q_cat = predicted_distributions[0]
   q_cont = predicted_distributions[1]
 
-  q_cat = ds.Categorical(logits_cat)
-  sigma_cont = tf.ones_like(q_con)
-  q_cont = ds.Normal(loc=q_con, scale=sigma_cont)
+  q_cat = ds.Categorical(q_cat)
+  sigma_cont = tf.ones_like(q_cont)
+  q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
   predicted_distributions = tf.concat([q_cat, q_cont], 1)
   # Calculate the negative log-likelihood of the reconstructed noise.
   log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
