@@ -94,7 +94,7 @@ class Gan():
     
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
-    def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_ratio=1):
+    def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_ratio=1, D_update_ratio=1):
         with self.graph.as_default():
             path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
             if path_to_latest_ckpt == None:
@@ -105,15 +105,16 @@ class Gan():
                 print('restored')
             self.train_writer = tf.summary.FileWriter(log_dir, self.sess.graph)
             for i in range(training_iteration):
-                for _ in range(1):
+                for _ in range(D_update_ratio):
                     self.sess.run(self.D_solver)
                 for _ in range(G_update_ratio):
                     self.sess.run(self.G_solver)
                 merge, global_step = self.sess.run([self.merged, self.global_step])
                 self.train_writer.add_summary(merge, global_step)
                 if ((i % 100) == 0):
-                	order = int(i/1000)%self.total_con_dim
-                	visualizations.varying_noise_continuous_ndim_without_category(self, order, self.total_con_dim, global_step, result_dir)
+                    print(self.total_con_dim)
+                    order = int(i/100)%self.total_con_dim
+                    visualizations.varying_noise_continuous_ndim_without_category(self, order, self.total_con_dim, global_step, result_dir)
                 if ((i % 500) == 0 ):
                 	self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
 
