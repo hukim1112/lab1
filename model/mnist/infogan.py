@@ -3,8 +3,13 @@ slim = tf.contrib.slim
 tfgan = tf.contrib.gan
 layers = tf.contrib.layers
 ds = tf.contrib.distributions
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.framework import ops
 import numpy as np
-
+import visualizations, losses_fn
+import os
+import cv2
+from datasets.reader import mnist as mnist_reader
 
 leaky_relu = lambda net: tf.nn.leaky_relu(net, alpha=0.01)
 
@@ -86,13 +91,13 @@ class Info_gan():
 
                 self.D_loss = losses_fn.wasserstein_discriminator(self.dis_gen_data, self.dis_real_data)
                 self.G_loss = losses_fn.wasserstein_generator(self.dis_gen_data)
-                #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
+                self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty(self, self.real_data, self.gen_data)
                 self.mutual_information_loss = losses_fn.mutual_information_penalty_weight(self.gen_input_code, self.Q_net)
 
                 self.global_step = tf.Variable(0, name='global_step', trainable=False)
                 #solver
                 self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss, var_list=self.dis_var)
-                self.G_solver = tf.train.AdamOptimizer(0.00009, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
+                self.G_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
                 self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
 
                 self.saver = tf.train.Saver()
@@ -118,7 +123,7 @@ class Info_gan():
                 if ((i % 1000) == 0):
                     visualizations.varying_noise_continuous_ndim(self, 0, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
                     visualizations.varying_noise_continuous_ndim(self, 1, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
-                    visualizations.varying_noise_continuous_ndim(self, 3, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
+                    visualizations.varying_noise_continuous_ndim(self, 2, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
                     visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, i, result_dir)
                 if ((i % 5000) == 0 ):
                     self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
@@ -157,13 +162,13 @@ def generator(gen_input_noise, gen_input_code, weight_decay=2.5e-5):
     print('noise shape : ', all_noise.shape)
     with slim.arg_scope(
         [layers.fully_connected, layers.conv2d_transpose],
-        activation_fn=tf.nn.relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
         weights_regularizer=layers.l2_regularizer(weight_decay)):
         net = layers.fully_connected(all_noise, 1024)
         net = layers.fully_connected(net, 7 * 7 * 128)
         net = tf.reshape(net, [-1, 7, 7, 128])
-        net = layers.conv2d_transpose(net, 64, [3, 3], stride=2)
-        net = layers.conv2d_transpose(net, 32, [3, 3], stride=2)
+        net = layers.conv2d_transpose(net, 64, [4, 4], stride=2)
+        net = layers.conv2d_transpose(net, 32, [4, 4], stride=2)
         # Make sure that generator output is in the same range as `inputs`
         # ie [-1, 1].
         net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)
@@ -193,11 +198,11 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
     """
     with slim.arg_scope(
         [layers.conv2d, layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=None,
         weights_regularizer=layers.l2_regularizer(weight_decay),
         biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.conv2d(img, 64, [3, 3], stride=2)
-        net = layers.conv2d(net, 128, [3, 3], stride=2)
+        net = layers.conv2d(img, 64, [4, 4], stride=2)
+        net = layers.conv2d(net, 128, [4, 4], stride=2)
         net = layers.flatten(net)
         net = layers.fully_connected(net, 1024, normalizer_fn=layers.layer_norm)
     
@@ -218,25 +223,3 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
         #q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
 
         return logits_real, [q_cat, q_cont]
-
-def encoder(input, weight_decay=2.5e-3, semantic_dim=2):
-    with slim.arg_scope(
-        [layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=None,
-        weights_regularizer=layers.l2_regularizer(weight_decay),
-        biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.fully_connected(input, 32, normalizer_fn=layers.batch_norm)
-        net = layers.fully_connected(net, 16, normalizer_fn=layers.batch_norm)
-        semantic_rep = layers.fully_connected(net, semantic_dim, normalizer_fn=None)
-        return semantic_rep
-
-def decoder(input, weight_decay=2.5e-3, continuous_dim = 10):
-    with slim.arg_scope(
-        [layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=None,
-        weights_regularizer=layers.l2_regularizer(weight_decay),
-        biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.fully_connected(input, 32, normalizer_fn=layers.batch_norm)
-        net = layers.fully_connected(net, 16, normalizer_fn=layers.batch_norm)
-        disentangled_rep = layers.fully_connected(net, continuous_dim, activation_fn=tf.nn.sigmoid, normalizer_fn=None)
-        return disentangled_rep
