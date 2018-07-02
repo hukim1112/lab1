@@ -47,7 +47,6 @@ class Gan():
 
         self.generator = generator
         self.discriminator = discriminator
-
         self.data = data
 
         # data
@@ -177,21 +176,6 @@ def generator(gen_input_noise, weight_decay=2.5e-5):
     
         return net
 
-    # with slim.arg_scope(
-    #     [layers.fully_connected, layers.conv2d_transpose],
-    #     activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
-    #     weights_regularizer=layers.l2_regularizer(weight_decay)):
-    #     net = layers.fully_connected(gen_input_noise, 1024)
-    #     net = layers.fully_connected(net, 7 * 7 * 256)
-    #     net = tf.reshape(net, [-1, 7, 7, 256])
-    #     net = layers.conv2d_transpose(net, 64, [3, 3], stride=2)
-    #     net = layers.conv2d_transpose(net, 32, [3, 3], stride=2)
-    #     # Make sure that generator output is in the same range as `inputs`
-    #     # ie [-1, 1].
-    #     net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)
-        
-    #     return net
-
 def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2):
     """InfoGAN discriminator network on MNIST digits.
     
@@ -224,14 +208,3 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
     
         logits_real = layers.fully_connected(net, 1, activation_fn=None)
         return logits_real
-
-    # with slim.arg_scope(
-    #     [layers.conv2d, layers.fully_connected],
-    #     activation_fn=leaky_relu, normalizer_fn=None,
-    #     weights_regularizer=layers.l2_regularizer(weight_decay),
-    #     biases_regularizer=layers.l2_regularizer(weight_decay)):
-    #     net = layers.conv2d(img, 64, [3, 3], stride=2)
-    #     net = layers.conv2d(net, 128, [3, 3], stride=2)
-    #     net = layers.flatten(net)
-    #     net = layers.fully_connected(net, 1024, normalizer_fn=layers.batch_norm)
-    #     return layers.linear(net, 1)

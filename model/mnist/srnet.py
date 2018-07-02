@@ -195,7 +195,6 @@ def load_batch(dataset_path, dataset_name, split_name, batch_size=128, image_siz
               capacity=2 * batch_size)
     return dataset, images, labels
 
-
 def generator(gen_input_noise, gen_input_code, weight_decay=2.5e-5):
     """InfoGAN discriminator network on MNIST digits.
     
@@ -205,21 +204,21 @@ def generator(gen_input_noise, gen_input_code, weight_decay=2.5e-5):
     Returns:
         A generated image in the range [-1, 1].
     """
+    gen_input_code = tf.concat([gen_input_code[0], gen_input_code[1]], axis = 1)
     all_noise = tf.concat([gen_input_noise, gen_input_code], axis=1)
-    
+    print('noise shape : ', all_noise.shape)
     with slim.arg_scope(
         [layers.fully_connected, layers.conv2d_transpose],
-        activation_fn=tf.nn.relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
         weights_regularizer=layers.l2_regularizer(weight_decay)):
         net = layers.fully_connected(all_noise, 1024)
         net = layers.fully_connected(net, 7 * 7 * 128)
         net = tf.reshape(net, [-1, 7, 7, 128])
-        net = layers.conv2d_transpose(net, 64, [3, 3], stride=2)
-        net = layers.conv2d_transpose(net, 32, [3, 3], stride=2)
+        net = layers.conv2d_transpose(net, 64, [4, 4], stride=2)
+        net = layers.conv2d_transpose(net, 32, [4, 4], stride=2)
         # Make sure that generator output is in the same range as `inputs`
         # ie [-1, 1].
-        net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)
-    
+        net = layers.conv2d(net, 1, 4, normalizer_fn=None, activation_fn=tf.tanh)   
         return net
 
 
@@ -243,15 +242,16 @@ def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2
         Logits for the probability that the image is real, and a list of posterior
         distributions for each of the noise vectors.
     """
+
     with slim.arg_scope(
         [layers.conv2d, layers.fully_connected],
-        activation_fn=leaky_relu, normalizer_fn=layers.batch_norm,
+        activation_fn=leaky_relu, normalizer_fn=None,
         weights_regularizer=layers.l2_regularizer(weight_decay),
         biases_regularizer=layers.l2_regularizer(weight_decay)):
-        net = layers.conv2d(img, 64, [3, 3], stride=2)
-        net = layers.conv2d(net, 128, [3, 3], stride=2)
+        net = layers.conv2d(img, 64, [4, 4], stride=2)
+        net = layers.conv2d(net, 128, [4, 4], stride=2)
         net = layers.flatten(net)
-        net = layers.fully_connected(net, 1024, normalizer_fn=layers.layer_norm)
+        net = layers.fully_connected(net, 1024, normalizer_fn=layers.batch_norm)
     
         logits_real = layers.fully_connected(net, 1, activation_fn=None)
 
