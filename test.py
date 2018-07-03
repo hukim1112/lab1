@@ -1,12 +1,35 @@
-import visualizations
-import numpy as np
 
-visualizations.varying_noise_continuous_ndim('hi', 3, 10, 5, 32, 1000, 'ss')
+import tensorflow as tf
+ds = tf.contrib.distributions
+from tensorflow.python.ops.losses import losses
+# q_cont = [[1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0], [-1.0, -2.0, -3.0, -4.0]]
+# sigma_cont = tf.ones_like(q_cont)
+# q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
 
-# categorical_sample_points = np.array(range(10))
-# categorical_noise = []
-# for _ in range(10):
-#     cur_sample = np.random.choice(categorical_sample_points)
-#     categorical_noise.extend([cur_sample] * 10)
-# categorical_noise = np.array(categorical_noise)
-# print(categorical_noise)
+#   # q_cat = predicted_distributions[0]
+#   # q_cat = ds.Categorical(q_cat)
+# sess = tf.Session()
+
+# print(sess.run(tf.reduce_mean(q_cont.log_prob([[1.0, 1.0, 1.0, 1.0], [0.0, -2.0, -3.0, 0.0], [-1.0, -2.0, -3.0, -4.0]]), axis = 0)   ))
+
+
+
+
+q_cat = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
+q_cat = ds.Categorical(q_cat)
+code_cat = tf.argmax([[1, 0, 0], [0, 1, 0], [1, 0, 0]], axis = 1)
+log_prob_cat = [tf.reduce_mean(q_cat.log_prob(code_cat))]
+
+
+q_cont = [[1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0], [-1.0, -2.0, -3.0, -4.0]]
+sigma_cont = tf.ones_like(q_cont)
+q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
+log_prob_con = tf.reduce_mean(q_cont.log_prob([[1.0, 1.0, 1.0, 1.0], [0.0, -2.0, -3.0, 3.0], [-1.0, -2.0, -3.0, -12.0]]), axis = 0)
+
+log_prob = tf.concat([log_prob_cat, log_prob_con], axis=0)
+#print('log_prob shape', log_prob.shape)
+
+sess = tf.Session()
+
+loss = -1 * losses.compute_weighted_loss(log_prob, 1)
+print(sess.run([log_prob, loss]))

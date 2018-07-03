@@ -74,7 +74,6 @@ class Gan():
                     self.real_data = ops.convert_to_tensor(self.real_data)
                     self.dis_real_data = self.discriminator(self.real_data) #real/fake loss 
                 
-                #TO do code loss functions.
                 #loss
                 self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope.name)
                 self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.gen_scope.name)
@@ -176,7 +175,7 @@ def generator(gen_input_noise, weight_decay=2.5e-5):
     
         return net
 
-def discriminator(img, weight_decay=2.5e-5, categorical_dim=10, continuous_dim=2):
+def discriminator(img, weight_decay=2.5e-5):
     """InfoGAN discriminator network on MNIST digits.
     
     Based on a paper https://arxiv.org/abs/1606.03657 and their code

@@ -53,7 +53,7 @@ def varying_categorical_noise(self, categorical_dim,
     continuous_code = np.concatenate(continuous_code)
 
     display_images = []
-    with variable_scope.variable_scope(self.gen_scope, reuse = True):
+    with variable_scope.variable_scope(self.gen_scope.name, reuse = True):
         display_images = self.generator(np.float32(continuous_noise), [np.float32(categorical_code), np.float32(continuous_code)])
 
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)
@@ -114,7 +114,7 @@ def varying_noise_continuous_ndim(self, order, categorical_dim,
     continuous_code[:, order] = varying_factor 
 
     display_images = []
-    with variable_scope.variable_scope(self.gen_scope, reuse = True):
+    with variable_scope.variable_scope(self.gen_scope.name, reuse = True):
         display_images = self.generator(np.float32(continuous_noise), [np.float32(categorical_code), np.float32(continuous_code)])
 
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)

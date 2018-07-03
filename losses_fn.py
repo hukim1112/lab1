@@ -9,7 +9,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
+ds = tf.contrib.distributions
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.losses import util
 from tensorflow.python.summary import summary
@@ -139,7 +139,7 @@ def wasserstein_gradient_penalty(
   # Reuse variables if a discriminator scope already exists.
   reuse = False if self.dis_scope.name is None else True
   with variable_scope.variable_scope(self.dis_scope.name, 'gpenalty_dscope', reuse=reuse):
-    disc_interpolates = self.discriminator(interpolates)
+    disc_interpolates = self.discriminator(interpolates, self.cat_dim, self.code_con_dim)
 
   gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
   gradient_squares = math_ops.reduce_sum(
@@ -155,6 +155,79 @@ def wasserstein_gradient_penalty(
   penalty = losses.compute_weighted_loss(penalties, weights, scope=scope)
 
   return penalty
+
+def wasserstein_gradient_penalty_infogan(
+    self,
+    real_data,
+    generated_data,
+    epsilon=1e-10,
+    weights=1.0,
+    scope=None,
+    loss_collection=ops.GraphKeys.LOSSES,
+    reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+    add_summaries=False):
+  """The gradient penalty for the Wasserstein discriminator loss.
+
+  See `Improved Training of Wasserstein GANs`
+  (https://arxiv.org/abs/1704.00028) for more details.
+
+  Args:
+    real_data: Real data.
+    generated_data: Output of the generator.
+    generator_inputs: Exact argument to pass to the generator, which is used
+      as optional conditioning to the discriminator.
+    discriminator_fn: A discriminator function that conforms to TFGAN API.
+    discriminator_scope: If not `None`, reuse discriminators from this scope.
+    epsilon: A small positive number added for numerical stability when
+      computing the gradient norm.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `real_data` and `generated_data`, and must be broadcastable to
+      them (i.e., all dimensions must be either `1`, or the same as the
+      corresponding dimension).
+    scope: The scope for the operations performed in computing the loss.
+    loss_collection: collection to which this loss will be added.
+    reduction: A `tf.losses.Reduction` to apply to loss.
+    add_summaries: Whether or not to add summaries for the loss.
+
+  Returns:
+    A loss Tensor. The shape depends on `reduction`.
+
+  Raises:
+    ValueError: If the rank of data Tensors is unknown.
+  """
+  real_data = ops.convert_to_tensor(real_data)
+  generated_data = ops.convert_to_tensor(generated_data)
+  if real_data.shape.ndims is None:
+    raise ValueError('`real_data` can\'t have unknown rank.')
+  if generated_data.shape.ndims is None:
+    raise ValueError('`generated_data` can\'t have unknown rank.')
+
+  differences = generated_data - real_data
+  batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+  alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
+  alpha = random_ops.random_uniform(shape=alpha_shape)
+  interpolates = real_data + (alpha * differences)
+
+  # Reuse variables if a discriminator scope already exists.
+  reuse = False if self.dis_scope.name is None else True
+  with variable_scope.variable_scope(self.dis_scope.name, 'gpenalty_dscope', reuse=reuse):
+    disc_interpolates, _ = self.discriminator(interpolates, self.cat_dim, self.code_con_dim)
+
+  gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
+  gradient_squares = math_ops.reduce_sum(
+      math_ops.square(gradients), axis=list(range(1, gradients.shape.ndims)))
+  # Propagate shape information, if possible.
+  if isinstance(batch_size, int):
+    gradient_squares.set_shape([
+        batch_size] + gradient_squares.shape.as_list()[1:])
+  # For numerical stability, add epsilon to the sum before taking the square
+  # root. Note tf.norm does not add epsilon.
+  slopes = math_ops.sqrt(gradient_squares + epsilon)
+  penalties = math_ops.square(slopes - 1.0)
+  penalty = losses.compute_weighted_loss(penalties, weights, scope=scope)
+
+  return penalty
+
 
 def mutual_information_penalty(
     structured_generator_inputs,
@@ -183,19 +256,21 @@ def mutual_information_penalty(
   Returns:
     A scalar Tensor representing the mutual information loss.
   """
-  _validate_information_penalty_inputs(
-      structured_generator_inputs, predicted_distributions)
   q_cat = predicted_distributions[0]
-  q_cont = predicted_distributions[1]
-
   q_cat = ds.Categorical(q_cat)
+  code_cat = tf.argmax(structured_generator_inputs[0], axis = 1)
+  log_prob_cat = [tf.reduce_mean(q_cat.log_prob(code_cat))]
+  #To make 2-D tensor, [] is added to the result of tf.reduce_mean
+
+  #print('cat shape', log_prob_cat.shape)  
+  q_cont = predicted_distributions[1]
   sigma_cont = tf.ones_like(q_cont)
   q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
-  predicted_distributions = tf.concat([q_cat, q_cont], 1)
-  # Calculate the negative log-likelihood of the reconstructed noise.
-  log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
-               zip(predicted_distributions, structured_generator_inputs)]
-  loss = -1 * losses.compute_weighted_loss(log_probs, weights, scope)
+  log_prob_con = tf.reduce_mean(q_cont.log_prob(predicted_distributions[1]), axis = 0)
+ 
+  log_prob = tf.concat([log_prob_cat, log_prob_con], axis=0)
+
+  loss = -1 * losses.compute_weighted_loss(log_prob, weights, scope)
 
   return loss
 
@@ -207,6 +282,12 @@ def mean_square_loss(
     add_summaries=False):
 
   return 0.5 * tf.reduce_sum(tf.pow(tf.subtract(_input, _output), 2.0))
+
+def variance_bias_loss(visual_feature_semantic_rep,
+    weights=1.0,
+    scope=None,
+    add_summaries=False):
+    pass
 
 
 
