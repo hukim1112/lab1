@@ -92,7 +92,7 @@ class Gan():
     
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
-    def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_ratio=1, D_update_ratio=1):
+    def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_num=1, D_update_num=1):
         with self.graph.as_default():
             path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
             if path_to_latest_ckpt == None:
@@ -103,9 +103,9 @@ class Gan():
                 print('restored')
             self.train_writer = tf.summary.FileWriter(log_dir, self.sess.graph)
             for i in range(training_iteration):
-                for _ in range(D_update_ratio):
+                for _ in range(D_update_num):
                     self.sess.run(self.D_solver)
-                for _ in range(G_update_ratio):
+                for _ in range(G_update_num):
                     self.sess.run(self.G_solver)
                 merge, global_step = self.sess.run([self.merged, self.global_step])
                 self.train_writer.add_summary(merge, global_step)
