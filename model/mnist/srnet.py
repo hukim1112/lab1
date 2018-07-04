@@ -51,9 +51,6 @@ class Srnet():
 
         self.generator = generator
         self.discriminator = discriminator
-        self.encoder = encoder
-        self.decoder = decoder
-
         self.data = data
 
         # data
@@ -82,105 +79,85 @@ class Srnet():
                     self.real_data = ops.convert_to_tensor(self.real_data)
                     self.dis_real_data, _ = self.discriminator(self.real_data, self.cat_dim, self.code_con_dim) #real/fake loss 
 
-
-
-            with variable_scope.variable_scope(dis_scope, reuse = True):
-                visual_feature_tensors = ops.convert_to_tensor(visual_feature_images)
-                not_use, visual_feature_code = self.discriminator(visual_feature_tensors, gen_inputs) 
+                #to do : make the data pipeline to bring visual feature samples.
+                with variable_scope.variable_scope(self.dis_scope.name, reuse = True):
+                    intended_variation_images = ops.convert_to_tensor(self.intended_variation_images)
+                    not_use, self.variation_code = self.discriminator(intended_variation_images, self.cat_dim, self.code_con_dim) 
             
-            with variable_scope.variable_scope('encoder') as en_scope:
-                visual_feature_semantic_rep = self.encoder(visual_feature_code) # Variance-bias Loss
-            with variable_scope.variable_scope('decoder') as de_scope:
-                reconstructed_code = self.decoder(visual_feature_semantic_rep) #L2(c', c'') reconstruction loss
+                with variable_scope.variable_scope('encoder') as self.en_scope:
+                    self.semantic_representation = self.encoder(self.variation_code) # Variance-bias Loss
+                with variable_scope.variable_scope('decoder') as self.de_scope:
+                    self.reconstructed_variation_code = self.decoder(self.semantic_representation) #L2(c', c'') reconstruction loss
 
-            with variable_scope.variable_scope(en_scope, reuse = True):
-                gen_data_semantic_rep = self.encoder(Q_net)
-            with variable_scope.variable_scope(de_scope, reuse = True):
-                gen_data_decoded_code = self.decoder(gen_data_semantic_rep)
+                with variable_scope.variable_scope(self.en_scope.name, reuse = True):
+                    self.gen_data_semantic_representation = self.encoder(self.Q_net)
+                with variable_scope.variable_scope(self.de_scope.name, reuse = True):
+                    self.gen_data_decoded_variation_code = self.decoder(self.gen_data_semantic_representation)
 
-            #TO do code loss functions.
-            #loss
-            self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=dis_scope)
-            self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=gen_scope)
-            self.encoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=en_scope)
-            self.decoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=de_scope)
-
-            self.D_loss = losses.wasserstein_discriminator(dis_gen_data, dis_real_data)
-            self.G_loss = losses.wasserstein_generator(dis_gen_data)
-            #self.wasserstein_gradient_penalty_loss = losses.wasserstein_gradient_penalty(what?)
-
-            self.mutual_information_loss = losses.mutual_information_penalty_weight(gen_inputs, Q_net)
-
-            self.reconstruction_loss1 = losses.mean_square_loss(visual_feature_semantic_rep, reconstructed_code)
-            self.reconstruction_loss2 = losses.mean_square_loss(gen_data_semantic_rep, gen_data_decoded_code)
-            self.variance_bias_loss = losses.variance_bias_loss(visual_feature_semantic_rep)
-            self.total_network_loss = losses.mean_square_loss(gen_input_code, gen_data_decoded_code)
-
-            #solver
-            self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
-            self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
-            self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
-
-            self.autoencoder_solver = tf.train.AdamOptimizer().minimize(self.reconstruction_loss1 + self.reconstruction_loss2, var_list=self.encoder_var+self.decoder_var)
-            self.semantic_encoder_solver = tf.train.AdamOptimizer().minimize(self.variance_bias_loss, var_list=self.encoder_var + self.dis_var)
-            self.total_network_solver = tf.train.AdamOptimizer().minimize(self.total_network_loss, var_list = self.gen_var + self.dis_var + self.encoder_var + self.decoder_var)
-
-    def train(self, sample_dir, ckpt_dir='ckpt', training_iteration = 1000000, batch_size = 64):
-
-        # Make this train from the latest checkpoint!
-        i = 0
-        self.sess.run(tf.global_variables_initializer())
-
-        for i in range(training_iteration):
+                #TO do code loss functions.
+                #loss
+                self.dis_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.dis_scope.name)
+                self.gen_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.gen_scope.name)
+                self.encoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.en_scope.name)
+                self.decoder_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.de_scope.name)
 
 
-    def train(self, sample_dir, ckpt_dir='ckpt', training_epoches = 1000000, batch_size = 64):
-        fig_count = 0
-        self.sess.run(tf.global_variables_initializer())
-        
-        for epoch in range(training_epoches):
-            X_b, _= self.data(batch_size)
-            z_b = sample_z(batch_size, self.z_dim)
-            c_b = sample_c(batch_size, self.c_dim)
-            # update D
-            self.sess.run(
-                self.D_solver,
-                feed_dict={self.X: X_b, self.z: z_b, self.c: c_b}
-                )
-            # update G
-            for _ in range(1):
-                self.sess.run(
-                    self.G_solver,
-                    feed_dict={self.z: z_b, self.c: c_b}
-                )
-            # update Q
-            for _ in range(2):  
-                self.sess.run(
-                    self.Q_solver,
-                    feed_dict={self.z: z_b, self.c: c_b}
-                )
-            # save img, model. print loss
-            if epoch % 100 == 0 or epoch < 100:
-                D_loss_curr = self.sess.run(
-                        self.D_loss,
-                        feed_dict={self.X: X_b, self.z: z_b, self.c: c_b})
-                G_loss_curr, Q_loss_curr = self.sess.run(
-                        [self.G_loss, self.Q_loss],
-                        feed_dict={self.z: z_b, self.c: c_b})
-                print('Iter: {}; D loss: {:.4}; G_loss: {:.4}; Q_loss: {:.4}'.format(epoch, D_loss_curr, G_loss_curr, Q_loss_curr))
+                self.D_loss = losses_fn.wasserstein_discriminator_loss(self.dis_real_data, self.dis_gen_data)
+                self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
+                self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty_infogan(self, self.real_data, self.gen_data)
+                self.mutual_information_loss = losses_fn.mutual_information_penalty(self.gen_input_code, self.Q_net)
 
-                if epoch % 1000 == 0:
-                    z_s = sample_z(16, self.z_dim)
-                    c_s = sample_c(16, self.c_dim, fig_count%10)
-                    samples = self.sess.run(self.G_sample, feed_dict={self.c: c_s, self.z: z_s})
 
-                    fig = self.data.data2fig(samples)
-                    plt.savefig('{}/{}_{}.png'.format(sample_dir, str(fig_count).zfill(3), str(fig_count%10)), bbox_inches='tight')
-                    fig_count += 1
-                    plt.close(fig)
+                self.reconstruction_loss1 = losses.mean_square_loss(self.variation_code, self.reconstructed_variation_code)
+                self.reconstruction_loss2 = losses.mean_square_loss(self.Q_net, self.gen_data_decoded_variation_code)
+                self.variance_bias_loss = losses.variance_bias_loss(self.semantic_representation)
+                self.total_network_loss = losses.mean_square_loss(self.gen_input_code, self.gen_data_decoded_variation_code)
 
-                #if epoch % 2000 == 0:
-                #   self.saver.save(self.sess, os.path.join(ckpt_dir, "infogan.ckpt"))
+
+                tf.summary.scalar('D_loss', self.D_loss + self.wasserstein_gradient_penalty_loss)
+                tf.summary.scalar('G_loss', self.G_loss)
+                tf.summary.scalar('reconstruction_loss1', self.reconstruction_loss1)
+                tf.summary.scalar('reconstruction_loss2', self.reconstruction_loss2)
+                tf.summary.scalar('variance_bias_loss', self.variance_bias_loss)
+                tf.summary.scalar('total_network_loss', self.total_network_loss)
+                self.merged = tf.summary.merge_all()
+
+                self.global_step = tf.Variable(0, name='global_step', trainable=False)
+
+                #solver
+                self.D_solver = tf.train.AdamOptimizer().minimize(self.D_loss, var_list=self.dis_var)
+                self.G_solver = tf.train.AdamOptimizer().minimize(self.G_loss, var_list=self.gen_var)
+                self.mutual_information_solver = tf.train.AdamOptimizer().minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
+
+                self.autoencoder_solver = tf.train.AdamOptimizer().minimize(self.reconstruction_loss1 + self.reconstruction_loss2, var_list=self.encoder_var+self.decoder_var)
+                self.semantic_encoder_solver = tf.train.AdamOptimizer().minimize(self.variance_bias_loss, var_list=self.encoder_var + self.dis_var)
+                self.total_network_solver = tf.train.AdamOptimizer().minimize(self.total_network_loss, var_list = self.gen_var + self.dis_var + self.encoder_var + self.decoder_var)
+
+    def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_num=1, D_update_num=1, Q_update_num=1):
+        with self.graph.as_default():
+            path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
+            if path_to_latest_ckpt == None:
+                print('scratch from random distribution')
+                self.sess.run(self.initializer)
+            else:
+                self.saver.restore(self.sess, path_to_latest_ckpt)
+                print('restore')
+            self.train_writer = tf.summary.FileWriter(log_dir, self.sess.graph)
+            for i in range(training_iteration):
+                for _ in range(D_update_num):
+                    self.sess.run(self.D_solver)
+                for _ in range(G_update_num):
+                    self.sess.run(self.G_solver)
+                for _ in range(Q_update_num):
+                    self.sess.run(self.mutual_information_solver)
+                merge, global_step = self.sess.run([self.merged, self.global_step])
+                self.train_writer.add_summary(merge, global_step)
+                if ((i % 1000) == 0):
+                    for j in range(self.code_con_dim):
+                        visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
+                    visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
+                if ((i % 1000) == 0 ):
+                    self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128, image_size=[64, 64, 3]):
 
