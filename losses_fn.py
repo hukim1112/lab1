@@ -266,7 +266,7 @@ def mutual_information_penalty(
   q_cont = predicted_distributions[1]
   sigma_cont = tf.ones_like(q_cont)
   q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
-  log_prob_con = tf.reduce_mean(q_cont.log_prob(predicted_distributions[1]), axis = 0)
+  log_prob_con = 2*tf.reduce_mean(q_cont.log_prob(predicted_distributions[1]), axis = 0)
  
   log_prob = tf.concat([log_prob_cat, log_prob_con], axis=0)
 

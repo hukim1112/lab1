@@ -67,7 +67,6 @@ class Info_gan():
         self.dataset_name = self.data.name
         self.split_name = self.data.split_name
         self.batch_size = self.data.batch_size
-
         with self.graph.as_default():
             with slim.queues.QueueRunners(self.sess):
                 self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
@@ -90,7 +89,7 @@ class Info_gan():
                 self.D_loss = losses_fn.wasserstein_discriminator_loss(self.dis_real_data, self.dis_gen_data)
                 self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
                 self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty_infogan(self, self.real_data, self.gen_data)
-                self.mutual_information_loss = losses_fn.mutual_information_penalty(self.gen_input_code, self.Q_net)
+                self.mutual_information_loss = losses_fn.mutual_information_penalty(self.gen_input_code, self.Q_net, data.mutual_penalty_weight)
 
                 tf.summary.scalar('D_loss', self.D_loss + self.wasserstein_gradient_penalty_loss)
                 tf.summary.scalar('G_loss', self.G_loss)
@@ -102,7 +101,7 @@ class Info_gan():
                 #solver
                 self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss+self.wasserstein_gradient_penalty_loss, var_list=self.dis_var, global_step=self.global_step)
                 self.G_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
-                self.mutual_information_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
+                self.mutual_information_solver = tf.train.AdamOptimizer(0.00001*data.learning_rate, beta1=0.5).minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
 
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
