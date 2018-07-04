@@ -43,7 +43,7 @@ for i in range(1, 11):
 		gan_data.mutual_penalty_weight = i
 		gan_data.learning_rate = 10**j
 		gan_model = infogan.Info_gan(gan_data)
-		gan_model.train(result_dir, ckpt_dir, log_dir, training_iteration = 50005, G_update_num=5, D_update_num=1, Q_update_num=3)
+		gan_model.train(result_dir, ckpt_dir, log_dir, training_iteration = 50005, G_update_num=5, D_update_num=1, Q_update_num=1)
 		del gan_data
 		del gan_model
 
