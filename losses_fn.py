@@ -283,11 +283,31 @@ def mean_square_loss(
 
   return 0.5 * tf.reduce_sum(tf.pow(tf.subtract(_input, _output), 2.0))
 
-def variance_bias_loss(visual_feature_semantic_rep,
+def variance_bias_loss(sementic_representation, order
     weights=1.0,
     scope=None,
     add_summaries=False):
-    pass
+    
+    ones = tf.ones_like(sementic_representation[:, order], tf.float32)
+    bias_loss = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, factor_order], ones), 2.0))
+
+    variance_loss = 
+
+
+#test code
+'''
+import tensorflow as tf
+
+a = tf.constant( [ [3.5, 2, 3, 4], [1.5, 3, 2, 4], [1, 6, 7, 4] ], tf.float32 )
+
+# ones = tf.ones_like(a[:, 0], tf.float32)
+# bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(a[:, 0], ones), 2.0))
+
+mean = tf.reduce_mean(a, axis = 0)
+k = a - mean
+with tf.Session() as sess:
+	print(sess.run([k, mean]))
+'''
 
 
 
