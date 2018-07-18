@@ -266,14 +266,13 @@ def mutual_information_penalty(
   q_cont = predicted_distributions[1]
   sigma_cont = tf.ones_like(q_cont)
   q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
-  log_prob_con = 2*tf.reduce_mean(q_cont.log_prob(predicted_distributions[1]), axis = 0)
+  log_prob_con = 2*tf.reduce_mean(q_cont.log_prob(structured_generator_inputs[1]), axis = 0)
  
   log_prob = tf.concat([log_prob_cat, log_prob_con], axis=0)
 
   loss = -1 * losses.compute_weighted_loss(log_prob, weights, scope)
 
-  return loss
-
+  return loss, -1 * losses.compute_weighted_loss(log_prob_cat, weights, scope), -1 * losses.compute_weighted_loss(log_prob_con, weights, scope)
 def mean_square_loss(
     _input,
     _output,
@@ -283,15 +282,15 @@ def mean_square_loss(
 
   return 0.5 * tf.reduce_sum(tf.pow(tf.subtract(_input, _output), 2.0))
 
-def variance_bias_loss(sementic_representation, order
-    weights=1.0,
-    scope=None,
-    add_summaries=False):
+# def variance_bias_loss(sementic_representation, order
+#     weights=1.0,
+#     scope=None,
+#     add_summaries=False):
     
-    ones = tf.ones_like(sementic_representation[:, order], tf.float32)
-    bias_loss = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, factor_order], ones), 2.0))
+#     ones = tf.ones_like(sementic_representation[:, order], tf.float32)
+#     bias_loss = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, factor_order], ones), 2.0))
 
-    variance_loss = 
+#     variance_loss = 
 
 
 #test code

@@ -89,11 +89,13 @@ class Info_gan():
                 self.D_loss = losses_fn.wasserstein_discriminator_loss(self.dis_real_data, self.dis_gen_data)
                 self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
                 self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty_infogan(self, self.real_data, self.gen_data)
-                self.mutual_information_loss = losses_fn.mutual_information_penalty(self.gen_input_code, self.Q_net, data.mutual_penalty_weight)
+                self.mutual_information_loss, self.log_prob_cat, self.log_prob_con = losses_fn.mutual_information_penalty(self.gen_input_code, self.Q_net, data.mutual_penalty_weight)
 
                 tf.summary.scalar('D_loss', self.D_loss + self.wasserstein_gradient_penalty_loss)
                 tf.summary.scalar('G_loss', self.G_loss)
                 tf.summary.scalar('Mutual_information_loss', self.mutual_information_loss)
+                tf.summary.scalar('log_prob_cat', self.log_prob_cat)
+                tf.summary.scalar('log_prob_con', self.log_prob_con)
                 self.merged = tf.summary.merge_all()
 
                 self.global_step = tf.Variable(0, name='global_step', trainable=False)
