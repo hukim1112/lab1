@@ -46,7 +46,7 @@ def get_infogan_noise(batch_size, categorical_dim, code_continuous_dim,
 
   return noise, [categorical_code, continuous_code]
 
-class Info_gan():
+class Megan():
     def __init__(self, data):
 
         self.graph = tf.Graph()
@@ -67,9 +67,26 @@ class Info_gan():
         self.dataset_name = self.data.name
         self.split_name = self.data.split_name
         self.batch_size = self.data.batch_size
+        self.visual_prior_path = self.data.visual_prior_path
         with self.graph.as_default():
             with slim.queues.QueueRunners(self.sess):
                 self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
+
+                visual_prior = {'category' : list(range(10)), 'rotation' : ['min', 'max'], 'width' : ['min', 'max']}
+                self.visual_prior_images = {}
+                for key in visual_prior.keys():
+                    self.visual_prior_images[key] = {}
+
+                    for attribute in visual_prior[key]:
+                        self.visual_prior_images[key][attribute] = []
+                        path = os.path.join(self.visual_prior_path, key, str(attribute))
+                        for img_file in os.listdir(path):
+                            sample = cv2.imread(os.path.join(path, img_file))
+                            sample = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+                            sample = (tf.to_float(sample) - 128.0) / 128.0
+                            sample = tf.reshape(sample, (28, 28, 1))
+                            self.visual_prior_images[key][attribute].append(sample)
+
                 tf.train.start_queue_runners(self.sess)
                 self.gen_input_noise, self.gen_input_code = get_infogan_noise(self.batch_size, self.cat_dim, self.code_con_dim, self.total_con_dim)
 
@@ -90,10 +107,12 @@ class Info_gan():
                 self.G_loss = losses_fn.wasserstein_generator_loss(self.dis_gen_data)
                 self.wasserstein_gradient_penalty_loss = losses_fn.wasserstein_gradient_penalty_infogan(self, self.real_data, self.gen_data)
                 self.mutual_information_loss = losses_fn.mutual_information_penalty(self.gen_input_code, self.Q_net)
+                self.visual_prior_penalty = losses_fn.visual_prior_penalty(self, self.visual_prior_images)
 
                 tf.summary.scalar('D_loss', self.D_loss + self.wasserstein_gradient_penalty_loss)
                 tf.summary.scalar('G_loss', self.G_loss)
                 tf.summary.scalar('Mutual_information_loss', self.mutual_information_loss)
+                tf.summary.scalar('visual_prior_loss', self.visual_prior_penalty)
                 # tf.summary.scalar('log_prob_cat', self.log_prob_cat)
                 # tf.summary.scalar('log_prob_con', self.log_prob_con)
                 self.merged = tf.summary.merge_all()
@@ -103,7 +122,7 @@ class Info_gan():
                 #solver
                 self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss+self.wasserstein_gradient_penalty_loss, var_list=self.dis_var, global_step=self.global_step)
                 self.G_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
-                self.mutual_information_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
+                self.mutual_information_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.mutual_information_loss + self.visual_prior_penalty, var_list=self.gen_var + self.dis_var)
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
     def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_num=1, D_update_num=1, Q_update_num=1):
@@ -145,6 +164,9 @@ class Info_gan():
 
                 for i in range(len(images)):
                     cv2.imwrite(os.path.join(result_dir, str(i)+'.jpg'), images[i])
+    def test(self):
+        print(ops.convert_to_tensor(self.visual_prior_images['category'][0]).shape)
+        print(self.real_data.shape)
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128):
 

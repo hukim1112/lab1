@@ -266,13 +266,13 @@ def mutual_information_penalty(
   q_cont = predicted_distributions[1]
   sigma_cont = tf.ones_like(q_cont)
   q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
-  log_prob_con = 2*tf.reduce_mean(q_cont.log_prob(structured_generator_inputs[1]), axis = 0)
+  log_prob_con = tf.reduce_mean(q_cont.log_prob(structured_generator_inputs[1]), axis = 0)
  
   log_prob = tf.concat([log_prob_cat, log_prob_con], axis=0)
 
   loss = -1 * losses.compute_weighted_loss(log_prob, weights, scope)
 
-  return loss, -1 * losses.compute_weighted_loss(log_prob_cat, weights, scope), -1 * losses.compute_weighted_loss(log_prob_con, weights, scope)
+  return loss
 def mean_square_loss(
     _input,
     _output,
@@ -282,31 +282,51 @@ def mean_square_loss(
 
   return 0.5 * tf.reduce_sum(tf.pow(tf.subtract(_input, _output), 2.0))
 
-# def variance_bias_loss(sementic_representation, order
-#     weights=1.0,
-#     scope=None,
-#     add_summaries=False):
+
+def visual_prior_penalty(self, visual_prior_images):
+  loss = []
+  loss_list = []
+  variation_key = [key_name for key_name in visual_prior_images.keys() if key_name!='category']
+  variation_key.sort()
+  print(variation_key)
+
+  for key in visual_prior_images.keys():
+     for attribute in visual_prior_images[key]:
+        with variable_scope.variable_scope(self.dis_scope.name, reuse=True):
+          no_use5, Q_net_from_samples = self.discriminator(ops.convert_to_tensor(visual_prior_images[key][attribute]), self.cat_dim, self.code_con_dim)
+        
+        if key == 'category':
+          category_label = tf.one_hot([attribute]*len(visual_prior_images[key][attribute]), self.cat_dim)
+          loss.append(losses.softmax_cross_entropy(category_label, Q_net_from_samples[0]))
+          loss_list.append( (key, attribute) )
+        elif key in variation_key:
+          if attribute == 'min':
+            bias_label = -1
+          else:
+            bias_label = 1
+
+          loss.append( variance_bias_loss(Q_net_from_samples[1], order=variation_key.index(key), bias_label = bias_label, weights=[1, 1] ) )
+          loss_list.append( (key, attribute) )
+  print(loss_list)
+  print(' = ' , loss)  
+  return tf.reduce_mean(loss)
+
+
+def variance_bias_loss(sementic_representation, order, bias_label,
+    weights=1.0,
+    scope=None,
+    add_summaries=False):
     
-#     ones = tf.ones_like(sementic_representation[:, order], tf.float32)
-#     bias_loss = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, factor_order], ones), 2.0))
+    ones = tf.ones_like(sementic_representation[:, order], tf.float32)*bias_label
+    bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, order], ones), 2.0))
 
-#     variance_loss = 
+    mean = tf.reduce_mean(sementic_representation, axis = 0)
+    variance_each_factor = tf.reduce_mean( tf.pow(  tf.subtract(sementic_representation, mean) , 2), axis=0)
 
+    comparative_variance = -variance_each_factor[order] / tf.reduce_mean(variance_each_factor)
 
-#test code
-'''
-import tensorflow as tf
-
-a = tf.constant( [ [3.5, 2, 3, 4], [1.5, 3, 2, 4], [1, 6, 7, 4] ], tf.float32 )
-
-# ones = tf.ones_like(a[:, 0], tf.float32)
-# bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(a[:, 0], ones), 2.0))
-
-mean = tf.reduce_mean(a, axis = 0)
-k = a - mean
-with tf.Session() as sess:
-	print(sess.run([k, mean]))
-'''
+    loss = losses.compute_weighted_loss([bias, comparative_variance], weights, scope)
+    return loss
 
 
 

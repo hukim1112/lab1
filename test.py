@@ -2,35 +2,66 @@
 import tensorflow as tf
 ds = tf.contrib.distributions
 from tensorflow.python.ops.losses import losses
-# q_cont = [[1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0], [-1.0, -2.0, -3.0, -4.0]]
-# sigma_cont = tf.ones_like(q_cont)
-# q_cont = ds.Normal(loc=q_cont, scale=sigma_cont)
+#test code
 
-#   # q_cat = predicted_distributions[0]
-#   # q_cat = ds.Categorical(q_cat)
-# sess = tf.Session()
+import tensorflow as tf
 
-# print(sess.run(tf.reduce_mean(q_cont.log_prob([[1.0, 1.0, 1.0, 1.0], [0.0, -2.0, -3.0, 0.0], [-1.0, -2.0, -3.0, -4.0]]), axis = 0)   ))
+a_ = tf.constant( [ [3.5, 2, 3, 4], [1.5, 3, 2, 4], [1, 6, 7, 4], [1, 6, 7, 4]], tf.float32 )
 
 
+a = tf.constant( [ [1.3, 4, 7, 2], [3, 2, 8, 6], [2, 4, 7, 4], [8, 3, 2, 1]], tf.float32 )
+variables = tf.Variable([[1, 0, 0, 0,],[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=tf.float32)
+
+b = tf.matmul(a, variables)
+# ones = tf.ones_like(a[:, 0], tf.float32)
+# bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(a[:, 0], ones), 2.0))
+
+mean = tf.reduce_mean(b, axis = 0)
+k = tf.subtract(a, mean)
+p = tf.pow(k, 2)
+each_variance = tf.reduce_mean(p, axis=0)
+relative = each_variance[0] / tf.reduce_mean(each_variance)
+
+mean_loss = 10*tf.pow(mean[0] , 2)
 
 
-q_cat = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
-q_cat = ds.Categorical(q_cat)
-code_cat = tf.argmax([[1, 0, 0], [0, 1, 0], [1, 0, 0]], axis = 1)
-log_prob_cat = [tf.reduce_mean(q_cat.log_prob(code_cat))]
 
 
-q_cont_ = [[1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 0.0], [-1.0, -2.0, -3.0, -4.0]]
-sigma_cont = tf.ones_like(q_cont_)
-q_cont = ds.Normal(loc=q_cont_, scale=sigma_cont)
-log_prob_con = tf.reduce_mean(q_cont.log_prob(q_cont_), axis = 0)
+b_ = tf.matmul(a_, variables)
+# ones = tf.ones_like(a[:, 0], tf.float32)
+# bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(a[:, 0], ones), 2.0))
+
+mean_ = tf.reduce_mean(b_, axis = 0)
+k_ = tf.subtract(a_, mean_)
+p_ = tf.pow(k_, 2)
+each_variance_ = tf.reduce_mean(p_, axis=0)
+relative_ = each_variance_[0] / tf.reduce_mean(each_variance_)
+
+mean_loss_ = 10*tf.pow(mean_[0] , 2)
 
 
-log_prob = tf.concat([log_prob_cat, log_prob_con], axis=0)
-#print('log_prob shape', log_prob.shape)
 
-sess = tf.Session()
 
-loss = -1 * losses.compute_weighted_loss(log_prob, 1)
-print(sess.run([log_prob, loss]))
+
+
+
+
+solver = tf.train.AdamOptimizer(0.01, beta1=0.5).minimize(-relative -relative_ + mean_loss + mean_loss_) 
+optimizer = tf.train.AdamOptimizer() 
+gradients = optimizer.compute_gradients(relative, variables)
+
+with tf.Session() as sess:
+	sess.run(tf.global_variables_initializer())
+	print('f(a) : \n', sess.run(b))
+	print('f(a_) : \n', sess.run(b_))
+	print('mean : ',sess.run(mean))
+	print('mean : ',sess.run(mean_))
+	print('relative_variance : \n', sess.run(relative), sess.run(relative_))
+
+	for i in range(1000):
+		sess.run(solver)
+	print('f(a) : \n', sess.run(b))
+	print('f(a_) : \n', sess.run(b_))
+	print('mean : ',sess.run(mean))
+	print('mean : ',sess.run(mean_))
+	print('relative_variance : \n', sess.run(relative), sess.run(relative_))
