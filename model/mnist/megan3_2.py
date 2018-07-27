@@ -71,12 +71,10 @@ class Megan():
         with self.graph.as_default():
             with slim.queues.QueueRunners(self.sess):
                 self.dataset, self.real_data, self.labels = load_batch(self.dataset_path, self.dataset_name, self.split_name, self.batch_size)
-
                 visual_prior = {'category' : list(range(10)), 'rotation' : ['min', 'max'], 'width' : ['min', 'max']}
                 self.visual_prior_images = {}
                 for key in visual_prior.keys():
                     self.visual_prior_images[key] = {}
-
                     for attribute in visual_prior[key]:
                         self.visual_prior_images[key][attribute] = []
                         path = os.path.join(self.visual_prior_path, key, str(attribute))
@@ -86,8 +84,9 @@ class Megan():
                             sample = (tf.to_float(sample) - 128.0) / 128.0
                             sample = tf.reshape(sample, (28, 28, 1))
                             self.visual_prior_images[key][attribute].append(sample)
+                        self.visual_prior_images[key][attribute] = ops.convert_to_tensor(self.visual_prior_images[key][attribute])
 
-                self.variation_key = [key_name for key_name in visual_prior_images.keys() if key_name!='category']
+                self.variation_key = [key_name for key_name in self.visual_prior_images.keys() if key_name!='category']
                 self.variation_key.sort()
 
 
@@ -154,7 +153,7 @@ class Megan():
                 self.train_writer.add_summary(merge, global_step)
                 if ((i % 1000) == 0):
                     for j in range(self.code_con_dim):
-                        visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir, name=variation_key[j])
+                        visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir, name=self.variation_key[j])
                     visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
                 if ((i % 1000) == 0 ):
                     self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)

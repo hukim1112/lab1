@@ -290,10 +290,10 @@ def visual_prior_penalty(self, visual_prior_images):
   for key in visual_prior_images.keys():
      for attribute in visual_prior_images[key]:
         with variable_scope.variable_scope(self.dis_scope.name, reuse=True):
-          no_use5, Q_net_from_samples = self.discriminator(ops.convert_to_tensor(visual_prior_images[key][attribute]), self.cat_dim, self.code_con_dim)
+          no_use5, Q_net_from_samples = self.discriminator(visual_prior_images[key][attribute], self.cat_dim, self.code_con_dim)
         
         if key == 'category':
-          category_label = tf.one_hot([attribute]*len(visual_prior_images[key][attribute]), self.cat_dim)
+          category_label = tf.one_hot([attribute]*visual_prior_images[key][attribute].shape[0], self.cat_dim)
           loss.append(losses.softmax_cross_entropy(category_label, Q_net_from_samples[0]))
           loss_list.append( (key, attribute) )
         elif key in self.variation_key:
