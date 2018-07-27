@@ -87,6 +87,11 @@ class Megan():
                             sample = tf.reshape(sample, (28, 28, 1))
                             self.visual_prior_images[key][attribute].append(sample)
 
+                self.variation_key = [key_name for key_name in visual_prior_images.keys() if key_name!='category']
+                self.variation_key.sort()
+
+
+
                 tf.train.start_queue_runners(self.sess)
                 self.gen_input_noise, self.gen_input_code = get_infogan_noise(self.batch_size, self.cat_dim, self.code_con_dim, self.total_con_dim)
 
@@ -123,7 +128,7 @@ class Megan():
                 self.D_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.D_loss+self.wasserstein_gradient_penalty_loss, var_list=self.dis_var, global_step=self.global_step)
                 self.G_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.G_loss, var_list=self.gen_var)
                 self.mutual_information_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.mutual_information_loss, var_list=self.gen_var + self.dis_var)
-                self.visual_prior_solver = tf.train.AdamOptimizer(0.0001, beta1=0.5).minimize(self.visual_prior_penalty, var_list=self.dis_var)
+                self.visual_prior_solver = tf.train.AdamOptimizer(0.001, beta1=0.5).minimize(self.visual_prior_penalty, var_list=self.dis_var)
                 self.saver = tf.train.Saver()
                 self.initializer = tf.global_variables_initializer()
     def train(self, result_dir, ckpt_dir, log_dir, training_iteration = 1000000, G_update_num=1, D_update_num=1, Q_update_num=1):
@@ -142,12 +147,14 @@ class Megan():
                 for _ in range(G_update_num):
                     self.sess.run(self.G_solver)
                 for _ in range(Q_update_num):
-                    self.sess.run([self.mutual_information_solver, self.visual_prior_solver])
+                    self.sess.run(self.mutual_information_solver)
+                for _ in range(1):
+                    self.sess.run(self.visual_prior_solver)
                 merge, global_step = self.sess.run([self.merged, self.global_step])
                 self.train_writer.add_summary(merge, global_step)
                 if ((i % 1000) == 0):
                     for j in range(self.code_con_dim):
-                        visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
+                        visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir, name=variation_key[j])
                     visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
                 if ((i % 1000) == 0 ):
                     self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)

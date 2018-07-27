@@ -65,7 +65,7 @@ def varying_categorical_noise(self, categorical_dim,
 
 
 def varying_noise_continuous_ndim(self, order, categorical_dim,
-    code_continuous_dim, total_continuous_dim, iteration, result_path):
+    code_continuous_dim, total_continuous_dim, iteration, result_path, name=None):
     """Create noise showing impact of categorical noise in InfoGAN.
 
     Categorical noise is constant across columns. Other noise is constant across
@@ -120,7 +120,10 @@ def varying_noise_continuous_ndim(self, order, categorical_dim,
     display_img = tfgan.eval.image_reshaper(tf.concat(display_images, 0), num_cols=cols)
     results = np.squeeze(self.sess.run(display_img))
     results = results*128 + 128
-    cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(order)+'.png'), results.astype(np.uint8))
+    if name==None:
+        cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(order)+'.png'), results.astype(np.uint8))
+    else:
+        cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous', name+'.png'), results.astype(np.uint8))
     print(str(iteration)+'th result saved')
 
 

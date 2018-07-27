@@ -286,9 +286,6 @@ def mean_square_loss(
 def visual_prior_penalty(self, visual_prior_images):
   loss = []
   loss_list = []
-  variation_key = [key_name for key_name in visual_prior_images.keys() if key_name!='category']
-  variation_key.sort()
-  print(variation_key)
 
   for key in visual_prior_images.keys():
      for attribute in visual_prior_images[key]:
@@ -299,13 +296,13 @@ def visual_prior_penalty(self, visual_prior_images):
           category_label = tf.one_hot([attribute]*len(visual_prior_images[key][attribute]), self.cat_dim)
           loss.append(losses.softmax_cross_entropy(category_label, Q_net_from_samples[0]))
           loss_list.append( (key, attribute) )
-        elif key in variation_key:
+        elif key in self.variation_key:
           if attribute == 'min':
             bias_label = -1
           else:
             bias_label = 1
 
-          loss.append( variance_bias_loss(Q_net_from_samples[1], order=variation_key.index(key), bias_label = bias_label, weights=[1, 1] ) )
+          loss.append( variance_bias_loss(Q_net_from_samples[1], order=self.variation_key.index(key), bias_label = bias_label, weights=[1, 1] ) )
           loss_list.append( (key, attribute) )
   print(loss_list)
   print(' = ' , loss)  
