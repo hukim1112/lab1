@@ -122,9 +122,10 @@ def varying_noise_continuous_ndim(self, order, categorical_dim,
     results = results*128 + 128
     if name==None:
         cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous'+str(order)+'.png'), results.astype(np.uint8))
+        print(str(iteration)+'th result saved')
     else:
-        cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous', name+'.png'), results.astype(np.uint8))
-    print(str(iteration)+'th result saved')
+        cv2.imwrite(os.path.join(result_path , str(iteration)+'_continuous_'+ name+'.png'), results.astype(np.uint8))
+        print(str(iteration)+'th result saved')
 
 
 

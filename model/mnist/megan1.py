@@ -89,7 +89,7 @@ class Megan():
 
                 self.variation_key = [key_name for key_name in self.visual_prior_images.keys() if key_name!='category']
                 self.variation_key.sort()
-
+                print(self.variation_key)
 
 
                 tf.train.start_queue_runners(self.sess)
