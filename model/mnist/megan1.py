@@ -11,6 +11,7 @@ import os
 import cv2
 from datasets.reader import mnist as mnist_reader
 
+
 leaky_relu = lambda net: tf.nn.leaky_relu(net, alpha=0.01)
 
 def get_infogan_noise(batch_size, categorical_dim, code_continuous_dim,
@@ -149,12 +150,12 @@ class Megan():
                     self.sess.run(self.mutual_information_solver)
                 merge, global_step = self.sess.run([self.merged, self.global_step])
                 self.train_writer.add_summary(merge, global_step)
-                if ((i % 1000) == 0):
-                    for j in range(self.code_con_dim):
-                        visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir, name=self.variation_key[j])
-                    visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
-                if ((i % 1000) == 0 ):
-                    self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
+                # if ((i % 1000) == 0):
+                #     for j in range(self.code_con_dim):
+                #         visualizations.varying_noise_continuous_ndim(self, j, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir, name=self.variation_key[j])
+                #     visualizations.varying_categorical_noise(self, self.cat_dim, self.code_con_dim, self.total_con_dim, global_step, result_dir)
+                # if ((i % 1000) == 0 ):
+                #     self.saver.save(self.sess, os.path.join(ckpt_dir, 'model'), global_step=self.global_step)
     def evaluate_with_random_sample(self, result_dir, ckpt_dir):
         with self.graph.as_default():
             path_to_latest_ckpt = tf.train.latest_checkpoint(checkpoint_dir=ckpt_dir)
@@ -170,7 +171,8 @@ class Megan():
                 for i in range(len(images)):
                     cv2.imwrite(os.path.join(result_dir, str(i)+'.jpg'), images[i])
     def test(self):
-        print(ops.convert_to_tensor(self.visual_prior_images['category'][0]).shape)
+        print( self.sess.run(ops.convert_to_tensor(self.visual_prior_images['category'][0])[0]).shape)
+        return self.sess.run(tf.reshape(ops.convert_to_tensor(self.visual_prior_images['category'][2])[0], (28,28)))
         print(self.real_data.shape)
 
 def load_batch(dataset_path, dataset_name, split_name, batch_size=128):

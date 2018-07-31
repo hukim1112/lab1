@@ -291,9 +291,11 @@ def visual_prior_penalty(self, visual_prior_images):
      for attribute in visual_prior_images[key]:
         with variable_scope.variable_scope(self.dis_scope.name, reuse=True):
           no_use5, Q_net_from_samples = self.discriminator(visual_prior_images[key][attribute], self.cat_dim, self.code_con_dim)
-        
+        print(key)
         if key == 'category':
+          print('why?????????????????')
           category_label = tf.one_hot([attribute]*visual_prior_images[key][attribute].shape[0], self.cat_dim)
+          category_label = tf.Print(category_label, [category_label[0], Q_net_from_samples[0][0]], '{} and {} bias : '.format(key, attribute))
           loss.append(losses.softmax_cross_entropy(category_label, Q_net_from_samples[0]))
           loss_list.append( (key, attribute) )
         elif key in self.variation_key:
@@ -302,26 +304,28 @@ def visual_prior_penalty(self, visual_prior_images):
           else:
             bias_label = 1
 
-          loss.append( variance_bias_loss(Q_net_from_samples[1], order=self.variation_key.index(key), bias_label = bias_label, weights=[1, 1] ) )
+          loss.append( variance_bias_loss(key, attribute, Q_net_from_samples[1], order=self.variation_key.index(key), bias_label = bias_label, weights=[1, 1] ) )
           loss_list.append( (key, attribute) )
   print(loss_list)
   print(' = ' , loss)  
   return tf.reduce_mean(loss)
 
 
-def variance_bias_loss(sementic_representation, order, bias_label,
+def variance_bias_loss(key, attribute, sementic_representation, order, bias_label,
     weights=1.0,
     scope=None,
     add_summaries=False):
     
-    ones = tf.ones_like(sementic_representation[:, order], tf.float32)*bias_label
-    bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, order], ones), 2.0))
+    bias_labels = tf.ones_like(sementic_representation[:, order], tf.float32)*bias_label
+    #bias_labels = tf.Print(bias_labels, [bias_labels], '{} and {} bias label : '.format(key, attribute))
+    bias = 0.5 * tf.reduce_sum(tf.pow(tf.subtract(sementic_representation[:, order], bias_labels), 2.0))
+    #bias = tf.Print(bias, [bias], '{} and {} bias : '.format(key, attribute))
 
     mean = tf.reduce_mean(sementic_representation, axis = 0)
     variance_each_factor = tf.reduce_mean( tf.pow(  tf.subtract(sementic_representation, mean) , 2), axis=0)
 
-    comparative_variance = -variance_each_factor[order] / tf.reduce_mean(variance_each_factor)
-
+    comparative_variance = -variance_each_factor[order] / tf.reduce_sum(variance_each_factor)
+    #comparative_variance = tf.Print(comparative_variance, [comparative_variance], '{} and {} comparative variance : '.format(key, attribute))
     loss = losses.compute_weighted_loss([bias, comparative_variance], weights, scope)
     return loss
 
