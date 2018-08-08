@@ -139,7 +139,7 @@ def wasserstein_gradient_penalty(
   # Reuse variables if a discriminator scope already exists.
   reuse = False if self.dis_scope.name is None else True
   with variable_scope.variable_scope(self.dis_scope.name, 'gpenalty_dscope', reuse=reuse):
-    disc_interpolates = self.discriminator(interpolates, self.cat_dim, self.code_con_dim)
+    disc_interpolates = self.discriminator(interpolates)
 
   gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
   gradient_squares = math_ops.reduce_sum(
